@@ -1275,117 +1275,191 @@ class MatrixMapPageState extends State<MatrixMapPage> {
 
   // --- TÌM RANH GIỚI QUA NOMINATIM (NHANH HƠN) ---
 
+  /// [PARALLEL SEARCH] Tìm kiếm online song song
+  /// Chia BBox thành 4 vùng + chia ref/name = 8 query song song
   Future<void> _searchOnline() async {
     String rawKeyword = _searchCtrl.text.trim();
     if (rawKeyword.isEmpty) return;
 
+    // ⏱️ Bắt đầu đo thời gian
+    final Stopwatch totalStopwatch = Stopwatch()..start();
+    debugPrint('\n🔍 ========== BẮT ĐẦU TÌM KIẾM ONLINE (PARALLEL): "$rawKeyword" ==========');
+
     LatLngBounds searchBounds =
         _currentBounds ?? _mapController.camera.visibleBounds;
     setState(() {
-      _loadingStatus = "Đang tìm kiếm dữ liệu online...";
+      _loadingStatus = "Đang tìm kiếm online...";
       _displayedPolylines.clear();
     });
 
-    double buffer = 0.005;
-    String bbox =
-        '${searchBounds.south - buffer},${searchBounds.west - buffer},${searchBounds.north + buffer},${searchBounds.east + buffer}';
-    String flexibleRegex = _createSuperFlexibleRegex(rawKeyword);
+    double buffer = 0.5;
+    double south = searchBounds.south - buffer;
+    double north = searchBounds.north + buffer;
+    double west = searchBounds.west - buffer;
+    double east = searchBounds.east + buffer;
     
-    // [UPDATED] Bỏ bộ lọc loại đường (tìm tất cả highway), bỏ tìm boundary
-    // [UPDATED] Tìm TẤT CẢ các loại đường (không phân biệt lớn nhỏ) để thuận tiện cho người dùng
-    // Vì đã filter theo Tên/Ref + BoundingBox nên tốc độ vẫn đảm bảo nhanh
-    String query = """
-        [out:json][timeout:25];
-        area(3600049915)->.searchArea;
-        (
-          way["highway"]["highway"!~"_link"]["ref"~"$flexibleRegex",i](area.searchArea)($bbox);
-          way["highway"]["highway"!~"_link"]["name"~"$flexibleRegex",i](area.searchArea)($bbox);
-        );
+    String flexibleRegex = _createSuperFlexibleRegex(rawKeyword);
+    const String server = 'https://maps.mail.ru/osm/tools/overpass/api/interpreter';
+    
+    // Chia BBox thành 4 vùng (2x2 grid)
+    double midLat = (south + north) / 2;
+    double midLng = (west + east) / 2;
+    
+    List<String> bboxes = [
+      '$south,$west,$midLat,$midLng',      // Tây Nam
+      '$south,$midLng,$midLat,$east',       // Đông Nam  
+      '$midLat,$west,$north,$midLng',       // Tây Bắc
+      '$midLat,$midLng,$north,$east',       // Đông Bắc
+    ];
+    
+    // Tạo 8 query: 4 vùng x 2 loại (ref + name)
+    List<Future<http.Response>> futures = [];
+    
+    for (int i = 0; i < bboxes.length; i++) {
+      String bbox = bboxes[i];
+      
+      // Query tìm theo REF
+      String refQuery = """
+        [out:json][timeout:10];
+        way["highway"]["highway"!~"_link"]["ref"~"$flexibleRegex",i]($bbox);
         out geom;
       """;
-
-    List<String> servers = [
-      'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
-      'https://lz4.overpass-api.de/api/interpreter',
-      'https://overpass.kumi.systems/api/interpreter',
-      'https://api.openstreetmap.fr/oapi/interpreter',
-      'https://overpass-api.de/api/interpreter',
-      'https://overpass.openstreetmap.ru/api/interpreter',
-    ];
+      
+      // Query tìm theo NAME
+      String nameQuery = """
+        [out:json][timeout:10];
+        way["highway"]["highway"!~"_link"]["name"~"$flexibleRegex",i]($bbox);
+        out geom;
+      """;
+      
+      futures.add(
+        http.post(Uri.parse(server), body: refQuery)
+            .timeout(const Duration(seconds: 25))
+            .catchError((e) => http.Response('{"elements":[]}', 200))
+      );
+      
+      futures.add(
+        http.post(Uri.parse(server), body: nameQuery)
+            .timeout(const Duration(seconds: 25))
+            .catchError((e) => http.Response('{"elements":[]}', 200))
+      );
+    }
+    
+    debugPrint('🚀 Đang gửi ${futures.length} query song song đến $server...');
 
     try {
-      final response = await _raceToFindServer(servers, query);
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        List<Polyline> foundLines = [];
-        if (data['elements'] != null) {
-          for (var element in data['elements']) {
-            // Chỉ xử lý way (đường đi) - Bỏ qua relation (biên giới)
-            if (element['type'] == 'way' && element['geometry'] != null) {
-              List<LatLng> pts = [];
-              for (var geom in element['geometry']) {
-                pts.add(LatLng(geom['lat'], geom['lon']));
+      final apiStopwatch = Stopwatch()..start();
+      
+      // Chạy tất cả query song song
+      List<http.Response> responses = await Future.wait(futures);
+      
+      apiStopwatch.stop();
+      debugPrint('⏱️ Thời gian gọi API (${responses.length} query song song): ${apiStopwatch.elapsedMilliseconds}ms');
+      
+      // Gộp kết quả từ tất cả response
+      Set<int> seenIds = {}; // Để loại bỏ trùng lặp
+      List<Polyline> foundLines = [];
+      int totalElements = 0;
+      
+      for (int i = 0; i < responses.length; i++) {
+        if (responses[i].statusCode == 200) {
+          try {
+            final data = jsonDecode(responses[i].body);
+            if (data['elements'] != null) {
+              for (var element in data['elements']) {
+                if (element['type'] == 'way' && element['geometry'] != null) {
+                  // Loại bỏ trùng lặp theo ID
+                  int wayId = element['id'] ?? 0;
+                  if (seenIds.contains(wayId)) continue;
+                  seenIds.add(wayId);
+                  
+                  totalElements++;
+                  List<LatLng> pts = [];
+                  for (var geom in element['geometry']) {
+                    pts.add(LatLng(geom['lat'], geom['lon']));
+                  }
+                  
+                  List<LatLng> simplified = _simplifyForRendering(pts);
+                  
+                  foundLines.add(
+                    Polyline(
+                      points: simplified,
+                      color: Colors.blueAccent,
+                      strokeWidth: 7.0,
+                      borderColor: Colors.white,
+                      borderStrokeWidth: 2.0,
+                      isDotted: false,
+                    ),
+                  );
+                }
               }
-              
-              // [UPDATED] Dùng hàm simplify của offline (theo zoom)
-              List<LatLng> simplified = _simplifyForRendering(pts);
-              
-              foundLines.add(
-                Polyline(
-                  points: simplified,
-                  color: Colors.blueAccent,
-                  strokeWidth: 7.0,
-                  borderColor: Colors.white,
-                  borderStrokeWidth: 2.0,
-                  isDotted: false,
-                ),
-              );
             }
+          } catch (e) {
+            debugPrint('⚠️ Lỗi parse response $i: $e');
           }
         }
-        
-        // [UPDATED] Áp dụng logic lọc giống Offline (giữ tất cả, thresholdRatio = 0.0)
-        List<Polyline> filteredLines = _filterRelevantSegments(
-          foundLines, 
-          thresholdRatio: 0.0,
-        );
-
-        // Cắt gọn trong khung
-        LatLngBounds bounds = _currentBounds ?? _mapController.camera.visibleBounds;
-        List<Polyline> clippedLines = _clipPolylinesToBounds(filteredLines, bounds);
-        
-        setState(() {
-          _displayedPolylines = clippedLines;
-          _hasRoadSelected = clippedLines.isNotEmpty;
-        });
-        if (clippedLines.isNotEmpty) {
-          _fitCameraToPolylines(clippedLines);
-          
-          // [MỚI] Nhấp nháy 3 lần rồi sáng hẳn
-          await _blinkPolylines(3);
-          
-          // Hiển dialog hỏi người dùng có muốn thêm vào Panel không
-          String searchedRef = rawKeyword.toUpperCase();
-          _showAddToPanelDialog(searchedRef, clippedLines);
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                "✅ Tìm thấy ${clippedLines.length} kết quả online",
-              ),
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Không tìm thấy trên các trục đường chính!"),
-            ),
-          );
-        }
-        }
       }
-     catch (e) {
-      debugPrint("Lỗi: $e");
+      
+      debugPrint('📊 Tổng hợp: $totalElements đường (đã loại ${seenIds.length - totalElements} trùng lặp)');
+      
+      // Áp dụng logic lọc
+      List<Polyline> filteredLines = _filterRelevantSegments(
+        foundLines, 
+        thresholdRatio: 0.0,
+      );
+
+      // Cắt gọn trong khung
+      LatLngBounds bounds = _currentBounds ?? _mapController.camera.visibleBounds;
+      List<Polyline> clippedLines = _clipPolylinesToBounds(filteredLines, bounds);
+      
+      // ⏱️ Đo thời gian vẽ
+      final drawStopwatch = Stopwatch()..start();
+      setState(() {
+        _displayedPolylines = clippedLines;
+        _hasRoadSelected = clippedLines.isNotEmpty;
+      });
+      drawStopwatch.stop();
+      debugPrint('⏱️ Thời gian xử lý & vẽ: ${drawStopwatch.elapsedMilliseconds}ms');
+      
+      if (clippedLines.isNotEmpty) {
+        _fitCameraToPolylines(clippedLines);
+        
+        await _blinkPolylines(3);
+        
+        String searchedRef = rawKeyword.toUpperCase();
+        _showAddToPanelDialog(searchedRef, clippedLines);
+        
+        // ⏱️ Tổng thời gian (không tính blink)
+        totalStopwatch.stop();
+        final totalMs = totalStopwatch.elapsedMilliseconds;
+        debugPrint('⏱️ TỔNG THỜI GIAN: ${totalMs}ms (${(totalMs/1000).toStringAsFixed(1)}s)');
+        debugPrint('🔍 ========== KẾT THÚC TÌM KIẾM ==========\n');
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              "✅ Tìm thấy ${clippedLines.length} kết quả online (${(totalMs/1000).toStringAsFixed(1)}s)",
+            ),
+          ),
+        );
+      } else {
+        totalStopwatch.stop();
+        debugPrint('⏱️ TỔNG THỜI GIAN (không có kết quả): ${totalStopwatch.elapsedMilliseconds}ms');
+        debugPrint('🔍 ========== KẾT THÚC TÌM KIẾM ==========\n');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Không tìm thấy trên các trục đường chính!"),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint("Lỗi tìm kiếm song song: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Lỗi: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
       setState(() => _loadingStatus = null);
     }
@@ -3654,14 +3728,28 @@ class MatrixMapPageState extends State<MatrixMapPage> {
                       value: _useMerged2025,
                       activeColor: Colors.orange,
                       onChanged: (v) {
-                        setState(() => _useMerged2025 = v ?? false);
+                        setState(() {
+                          _useMerged2025 = v ?? false;
+                          
+                          // [SỬA] Tắt tất cả layer ranh giới đang bật TRƯỚC KHI load dữ liệu mới
+                          // Xóa tất cả layer boundary_ và border_ khỏi selectedLayerIds
+                          _selectedLayerIds.removeWhere((id) => 
+                              id.startsWith('boundary_') || id.startsWith('border_'));
+                          
+                          // Xóa polylines đang hiển thị liên quan đến ranh giới
+                          _displayedPolylines.clear();
+                          _hasRoadSelected = false;
+                        });
+                        
                         // Reload ranh giới nếu có bounds
                         if (_currentBounds != null) {
-                          // Clear cache để reload với bộ dữ liệu mới
+                          // Clear cache ranh giới để reload với bộ dữ liệu mới
                           _cachedRoads.removeWhere((r) => r.type == 'boundary');
                           _populateLayerGroups();
                           _autoDetectProvincesFromKMZ(_currentBounds!, skipFitCamera: true);
                         }
+                        
+                        _saveAllSettings();
                       },
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       visualDensity: VisualDensity.compact,

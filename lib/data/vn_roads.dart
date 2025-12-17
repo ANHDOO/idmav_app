@@ -362,16 +362,24 @@ class RoadAssetService {
   }
 
   /// Lấy danh sách gợi ý dựa trên từ khóa (tối đa 10 kết quả)
-  /// Ưu tiên: 1. Khớp chính xác 2. Bắt đầu bằng query 3. Chứa query
+  /// Ưu tiên: 1. Ref khớp chính xác 2. Ref bắt đầu bằng query 3. Ref chứa query 4. Tên chứa query
   List<String> getSuggestions(String query) {
     if (!isLoaded || query.isEmpty) return [];
     
     final normalizedQuery = _normalize(query);
+    if (normalizedQuery.isEmpty) return [];
     
-    // Chia thành 3 nhóm ưu tiên
-    final List<String> exactMatches = [];    // Khớp chính xác (QL.1 == QL.1)
-    final List<String> prefixMatches = [];   // Bắt đầu bằng (QL.1 -> QL.1A, QL.10)
-    final List<String> containsMatches = []; // Chứa bên trong (Cầu vượt QL.1)
+    // Các prefix mã đường phổ biến
+    const roadPrefixes = ['ct', 'ql', 'tl', 'hl', 'dt', 'ah'];
+    
+    // Kiểm tra xem query có phải là mã đường không (VD: CT, QL1, CT.01)
+    bool isRoadCodeQuery = roadPrefixes.any((prefix) => normalizedQuery.startsWith(prefix));
+    
+    // Chia thành 4 nhóm ưu tiên (thứ tự giảm dần)
+    final List<String> exactMatches = [];      // 1. Ref khớp chính xác (QL1 == QL1)
+    final List<String> prefixMatches = [];     // 2. Ref bắt đầu bằng query (CT0 -> CT.01, CT.02)
+    final List<String> refContains = [];       // 3. Ref chứa query (ít phổ biến)
+    final List<String> nameContains = [];      // 4. Tên chứa query (ưu tiên thấp nhất)
     
     for (var road in _roads) {
       // Tách ref đa trị (VD: "QL.10;QL.37B" -> ["QL.10", "QL.37B"])
@@ -384,34 +392,44 @@ class RoadAssetService {
         
         String normalizedRef = _normalize(cleanRef);
         
-        // Khớp chính xác
+        // 1. Khớp chính xác
         if (normalizedRef == normalizedQuery) {
           if (!exactMatches.contains(cleanRef)) exactMatches.add(cleanRef);
           refMatched = true;
         }
-        // Bắt đầu bằng query
+        // 2. Bắt đầu bằng query (ưu tiên cao)
         else if (normalizedRef.startsWith(normalizedQuery)) {
           if (!prefixMatches.contains(cleanRef)) prefixMatches.add(cleanRef);
           refMatched = true;
         }
+        // 3. Ref chứa query (ưu tiên trung bình) - Chỉ khi không phải là road code query
+        else if (!isRoadCodeQuery && normalizedRef.contains(normalizedQuery)) {
+          if (!refContains.contains(cleanRef)) refContains.add(cleanRef);
+          refMatched = true;
+        }
       }
 
-      // Nếu ref không match thì check theo tên
-      if (!refMatched) {
+      // 4. Nếu ref không match và KHÔNG phải road code query -> check theo tên
+      // Khi user đang gõ mã đường (CT., QL1...) thì KHÔNG tìm trong tên
+      if (!refMatched && !isRoadCodeQuery) {
         String normalizedName = _normalize(road.name);
         if (normalizedName.contains(normalizedQuery)) {
           String primaryRef = refs.isNotEmpty ? refs.first.trim() : "";
-          String suggestion = '$primaryRef ${road.name}'.trim();
-          if (!containsMatches.contains(suggestion)) containsMatches.add(suggestion);
+          String suggestion = primaryRef.isNotEmpty ? '$primaryRef ${road.name}' : road.name;
+          if (!nameContains.contains(suggestion)) nameContains.add(suggestion);
         }
       }
       
-      // Giới hạn tìm kiếm
-      if (exactMatches.length + prefixMatches.length + containsMatches.length >= 30) break;
+      // Giới hạn tìm kiếm sớm để tăng hiệu năng
+      int total = exactMatches.length + prefixMatches.length + refContains.length + nameContains.length;
+      if (total >= 30) break;
     }
 
-    // Ghép 3 nhóm theo thứ tự ưu tiên
-    List<String> result = [...exactMatches, ...prefixMatches, ...containsMatches];
+    // Sắp xếp prefixMatches theo độ khớp (ngắn hơn = liên quan hơn)
+    prefixMatches.sort((a, b) => _normalize(a).length.compareTo(_normalize(b).length));
+
+    // Ghép 4 nhóm theo thứ tự ưu tiên
+    List<String> result = [...exactMatches, ...prefixMatches, ...refContains, ...nameContains];
     return result.take(10).toList();
   }
 
