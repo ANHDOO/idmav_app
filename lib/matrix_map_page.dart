@@ -138,6 +138,7 @@ class MatrixMapPageState extends State<MatrixMapPage> {
   List<Polyline> _kmzPolylines = [];
   List<RoadData> _cachedRoads = [];
   List<Polyline> _displayedPolylines = [];
+  bool _hasRoadSelected = false; // [MỚI] Giữ nút DÒ BIT hiển thị khi đường nháy
 
   // Layer Tree Data
   List<LayerGroup> _layerGroups = [];
@@ -638,6 +639,7 @@ class MatrixMapPageState extends State<MatrixMapPage> {
 
     setState(() {
       _displayedPolylines = newPolylines;
+      _hasRoadSelected = newPolylines.isNotEmpty; // Cập nhật trạng thái nút DÒ BIT
     });
 
     // [DISABLED] Không tự động bay camera khi toggle layer
@@ -654,6 +656,7 @@ class MatrixMapPageState extends State<MatrixMapPage> {
         _cachedRoads.clear();  // Xóa ranh giới/đường đã cache
         RoadAssetService().clearCache(); // [MỚI] Reset cache Roads Service
         _displayedPolylines.clear();  // Xóa polylines đang hiển thị
+        _hasRoadSelected = false; // Ẩn nút DÒ BIT
         _manualAddedRoads.clear();  // Xóa đường thủ công
         _selectedLayerIds.clear();  // Xóa selected layers
         // KHÔNG xóa KMZ, grid, bounds - giữ nguyên khung lưới
@@ -674,6 +677,36 @@ class MatrixMapPageState extends State<MatrixMapPage> {
       );
     } catch (e) {
       debugPrint("Lỗi xóa: $e");
+    }
+  }
+
+  /// [MỚI] Xóa đường khỏi panel và cập nhật hiển thị
+  Future<void> _deleteRoadFromPanel(String roadName) async {
+    setState(() {
+      // Xóa khỏi danh sách đường thủ công
+      _manualAddedRoads.remove(roadName);
+      
+      // Xóa khỏi selected layers nếu đang được chọn
+      String layerId = 'road_$roadName';
+      _selectedLayerIds.remove(layerId);
+    });
+    
+    // Lưu lại file
+    await _saveManualRoadsToFile();
+    
+    // Cập nhật lại layer panel
+    _populateLayerGroups();
+    
+    // Cập nhật lại polylines hiển thị (xóa đường vừa xóa khỏi bản đồ)
+    _updateDisplayedPolylinesFromLayers(flyToLayerId: null);
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Đã xóa \"$roadName\" khỏi danh sách!"),
+          backgroundColor: Colors.orange,
+        ),
+      );
     }
   }
 
@@ -1272,12 +1305,12 @@ class MatrixMapPageState extends State<MatrixMapPage> {
       """;
 
     List<String> servers = [
+      'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
       'https://lz4.overpass-api.de/api/interpreter',
       'https://overpass.kumi.systems/api/interpreter',
       'https://api.openstreetmap.fr/oapi/interpreter',
       'https://overpass-api.de/api/interpreter',
       'https://overpass.openstreetmap.ru/api/interpreter',
-      'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
     ];
 
     try {
@@ -1321,14 +1354,20 @@ class MatrixMapPageState extends State<MatrixMapPage> {
         LatLngBounds bounds = _currentBounds ?? _mapController.camera.visibleBounds;
         List<Polyline> clippedLines = _clipPolylinesToBounds(filteredLines, bounds);
         
-        setState(() => _displayedPolylines = clippedLines);
+        setState(() {
+          _displayedPolylines = clippedLines;
+          _hasRoadSelected = clippedLines.isNotEmpty;
+        });
         if (clippedLines.isNotEmpty) {
-          // [MỚI] Hiển dialog hỏi người dùng có muốn thêm vào Panel không
-          // (Giống offline - tiện ích cho người dùng)
-          String searchedRef = rawKeyword.toUpperCase();
-          _showAddToPanelDialog(searchedRef, clippedLines); // Có thể tái sử dụng dialog này nếu muốn
-          
           _fitCameraToPolylines(clippedLines);
+          
+          // [MỚI] Nhấp nháy 3 lần rồi sáng hẳn
+          await _blinkPolylines(3);
+          
+          // Hiển dialog hỏi người dùng có muốn thêm vào Panel không
+          String searchedRef = rawKeyword.toUpperCase();
+          _showAddToPanelDialog(searchedRef, clippedLines);
+          
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
@@ -1350,6 +1389,29 @@ class MatrixMapPageState extends State<MatrixMapPage> {
     } finally {
       setState(() => _loadingStatus = null);
     }
+  }
+
+  /// [MỚI] Hiệu ứng nhấp nháy đường tìm được
+  /// Bật 3 lần - Tắt 3 lần rồi sáng hẳn
+  Future<void> _blinkPolylines(int times) async {
+    if (_displayedPolylines.isEmpty) return;
+    
+    final List<Polyline> savedLines = List.from(_displayedPolylines);
+    
+    // Đánh dấu có đường đang được chọn (giữ nút DÒ BIT hiển thị)
+    setState(() => _hasRoadSelected = true);
+    
+    for (int i = 0; i < times; i++) {
+      // Bật
+      setState(() => _displayedPolylines = savedLines);
+      await Future.delayed(const Duration(milliseconds: 300));
+      // Tắt
+      setState(() => _displayedPolylines = []);
+      await Future.delayed(const Duration(milliseconds: 300));
+    }
+    
+    // Sáng hẳn cuối cùng
+    setState(() => _displayedPolylines = savedLines);
   }
 
   /// [MỚI] Tìm kiếm bằng VietMap API
@@ -1880,9 +1942,13 @@ class MatrixMapPageState extends State<MatrixMapPage> {
     if (clippedLines.isNotEmpty) {
       _fitCameraToPolylines(clippedLines);
       
-      // [MỚI] Hiển dialog hỏi người dùng có muốn thêm vào Panel không (chỉ cho đường)
-    String searchedRef = rawKeyword.toUpperCase();
-    _showAddToPanelDialog(searchedRef, clippedLines);  }
+      // [MỚI] Nhấp nháy 3 lần rồi sáng hẳn
+      await _blinkPolylines(3);
+      
+      // Hiển dialog hỏi người dùng có muốn thêm vào Panel không
+      String searchedRef = rawKeyword.toUpperCase();
+      _showAddToPanelDialog(searchedRef, clippedLines);
+    }
     else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -2040,18 +2106,8 @@ class MatrixMapPageState extends State<MatrixMapPage> {
             ),
             onPressed: () {
               Navigator.pop(ctx);
-              // Xóa khỏi panel
-              _manualAddedRoads.remove(roadName);
-              _selectedLayerIds.remove('road_$roadName');
-              _populateLayerGroups();
-              // Lưu vào file
-              _saveManualRoadsToFile();
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text("Đã xóa '$roadName' khỏi danh sách"),
-                  backgroundColor: Colors.orange,
-                ),
-              );
+              // [SỬA] Gọi hàm xóa chung để cập nhật cả polylines hiển thị
+              _deleteRoadFromPanel(roadName);
             },
             child: const Text("Xóa"),
           ),
@@ -2067,7 +2123,9 @@ class MatrixMapPageState extends State<MatrixMapPage> {
     double connectionDist = 50.0,
   }) {
     if (input.isEmpty) return [];
-
+    
+    // [TỐI ƯU] Early exit: Nếu threshold = 0 -> Giữ tất cả, không cần chạy O(n²)
+    if (thresholdRatio <= 0.0) return input;
     // 1. Hàm tính độ dài
     double getLength(Polyline p) {
       double len = 0;
@@ -3365,7 +3423,7 @@ class MatrixMapPageState extends State<MatrixMapPage> {
               initialCenter: _savedCenter,
               initialZoom: _savedZoom,
               // [MỚI] Giới hạn zoom khi offline theo file tiles đã tải (zoom 6-12)
-              minZoom: OfflineMapService().isOnline ? 5.5 : 6.0,
+              minZoom: OfflineMapService().isOnline ? 6 : 6.0,
               maxZoom: OfflineMapService().isOnline ? 13 : 12.0,
               interactionOptions: const InteractionOptions(
                 flags: InteractiveFlag.all,
@@ -3447,40 +3505,32 @@ class MatrixMapPageState extends State<MatrixMapPage> {
           _buildLayerTreePanel(),
           _buildLayerPanelToggle(),
 
-          Positioned(
-            bottom: 5,
-            left: 10,
-            right: 10,
-            child: Column(
-              children: [
-                // [MỚI] Nút chuyển sang Dò Bit
-                if (_displayedPolylines.isNotEmpty)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: 6, right: 4),
-                      child: SizedBox(
-                        height: 32,
-                        child: ElevatedButton.icon(
-                          icon: const Icon(Icons.play_arrow, size: 16),
-                          label: const Text(
-                            "DÒ BIT",
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
-                            foregroundColor: Colors.white,
-                            elevation: 3,
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                          ),
-                          onPressed: _transferToScanner,
-                        ),
-                      ),
+          // [MỚI] Nút chuyển sang Dò Bit - Tách riêng để không bị ảnh hưởng khi đường nháy
+          if (_hasRoadSelected)
+            Positioned(
+              bottom: 12,
+              right: 16,
+              child: SizedBox(
+                height: 36,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.play_arrow, size: 18),
+                  label: const Text(
+                    "DÒ BIT",
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    elevation: 4,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
                     ),
                   ),
-              ],
+                  onPressed: _transferToScanner,
+                ),
+              ),
             ),
-          ),
         ],
       ),
     );
