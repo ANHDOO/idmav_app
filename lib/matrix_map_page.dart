@@ -172,6 +172,13 @@ class MatrixMapPageState extends State<MatrixMapPage> {
   
   bool _useMerged2025 = false; // Sử dụng dữ liệu 34 tỉnh 2025 (sau sáp nhập)
 
+  // [MỚI] Cache kết quả tìm kiếm online
+  // Key: từ khóa đã chuẩn hóa (uppercase), Value: polylines đã tìm được
+  final Map<String, List<Polyline>> _searchCache = {};
+  
+  // [MỚI] Lịch sử tìm kiếm (từ khóa đã tìm, mới nhất ở đầu)
+  List<String> _searchHistory = [];
+
   // VietMap Tilemap API Key
   static const String _vietmapApiKey = 'dd90b70f3100c8b3cf5f0e0818b323492f7e15f9697ab44b';
 
@@ -245,6 +252,12 @@ class MatrixMapPageState extends State<MatrixMapPage> {
       _currentMapType = MapType.values.elementAtOrNull(mapTypeIndex) ?? MapType.google;
       _useMerged2025 = prefs.getBool('map_use_merged_2025') ?? false;
 
+      // [MỚI] Load lịch sử tìm kiếm
+      String? historyJson = prefs.getString('search_history');
+      if (historyJson != null) {
+        _searchHistory = List<String>.from(jsonDecode(historyJson));
+      }
+
       // Load ID các tấm đã lưu
       String? tileIdsJson = prefs.getString('map_tile_ids');
       if (tileIdsJson != null) {
@@ -303,6 +316,12 @@ class MatrixMapPageState extends State<MatrixMapPage> {
 
     // Lưu ID các tấm
     await prefs.setString('map_tile_ids', jsonEncode(_tileControlIds));
+
+    // [MỚI] Lưu lịch sử tìm kiếm (giới hạn 20)
+    if (_searchHistory.length > 20) {
+      _searchHistory = _searchHistory.sublist(0, 20);
+    }
+    await prefs.setString('search_history', jsonEncode(_searchHistory));
 
     if (_isMapReady) {
       await prefs.setDouble(
@@ -497,12 +516,12 @@ class MatrixMapPageState extends State<MatrixMapPage> {
         LayerGroup(
           name: 'Quốc gia',
           items: borderItems,
-          isExpanded: true,
+          isExpanded: false,
         ),
         LayerGroup(
           name: 'Tỉnh/TP',
           items: boundaryItems,
-          isExpanded: true,
+          isExpanded: false,
         ),
         LayerGroup(
           name: 'Quốc lộ',
@@ -1275,15 +1294,65 @@ class MatrixMapPageState extends State<MatrixMapPage> {
 
   // --- TÌM RANH GIỚI QUA NOMINATIM (NHANH HƠN) ---
 
-  /// [PARALLEL SEARCH] Tìm kiếm online song song
-  /// Chia BBox thành 4 vùng + chia ref/name = 8 query song song
+  /// [RACE SEARCH] Tìm kiếm online - race giữa nhiều server
+  /// Server nào trả về trước thì dùng kết quả đó
+  /// [CẢI TIẾN] Có cache và lịch sử tìm kiếm
   Future<void> _searchOnline() async {
     String rawKeyword = _searchCtrl.text.trim();
     if (rawKeyword.isEmpty) return;
 
+    String cacheKey = rawKeyword.toUpperCase();
+    
+    // [MỚI] Kiểm tra cache - nếu đã tìm trước đó thì dùng lại
+    if (_searchCache.containsKey(cacheKey)) {
+      debugPrint('📦 CACHE HIT: "$cacheKey" - Lấy từ cache');
+      final Stopwatch cacheStopwatch = Stopwatch()..start();
+      
+      List<Polyline> cachedLines = _searchCache[cacheKey]!;
+      
+      // Cắt lại theo bounds hiện tại (có thể bounds đã thay đổi)
+      LatLngBounds bounds = _currentBounds ?? _mapController.camera.visibleBounds;
+      List<Polyline> clippedLines = _clipPolylinesToBounds(cachedLines, bounds);
+      
+      setState(() {
+        _displayedPolylines = clippedLines;
+        _hasRoadSelected = clippedLines.isNotEmpty;
+      });
+      
+      if (clippedLines.isNotEmpty) {
+        _fitCameraToPolylines(clippedLines);
+        await _blinkPolylines(3);
+        _showAddToPanelDialog(cacheKey, clippedLines);
+        
+        cacheStopwatch.stop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              "⚡ Cache: ${clippedLines.length} kết quả (${cacheStopwatch.elapsedMilliseconds}ms)",
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Không có kết quả trong vùng hiện tại")),
+        );
+      }
+      return; // Không cần gọi API
+    }
+    
+    // [MỚI] Thêm vào lịch sử tìm kiếm
+    if (!_searchHistory.contains(cacheKey)) {
+      _searchHistory.insert(0, cacheKey); // Mới nhất ở đầu
+      if (_searchHistory.length > 20) {
+        _searchHistory = _searchHistory.sublist(0, 20);
+      }
+      _saveAllSettings(); // Lưu lịch sử
+    }
+
     // ⏱️ Bắt đầu đo thời gian
     final Stopwatch totalStopwatch = Stopwatch()..start();
-    debugPrint('\n🔍 ========== BẮT ĐẦU TÌM KIẾM ONLINE (PARALLEL): "$rawKeyword" ==========');
+    debugPrint('\n🔍 ========== BẮT ĐẦU TÌM KIẾM ONLINE (RACE): "$rawKeyword" ==========');
 
     LatLngBounds searchBounds =
         _currentBounds ?? _mapController.camera.visibleBounds;
@@ -1292,79 +1361,69 @@ class MatrixMapPageState extends State<MatrixMapPage> {
       _displayedPolylines.clear();
     });
 
-    double buffer = 0.5;
+    // [TỐI ƯU] Giảm buffer từ 0.5 xuống 0.2 để query nhanh hơn
+    double buffer = 0.2;
     double south = searchBounds.south - buffer;
     double north = searchBounds.north + buffer;
     double west = searchBounds.west - buffer;
     double east = searchBounds.east + buffer;
+    String bbox = '$south,$west,$north,$east';
     
     String flexibleRegex = _createSuperFlexibleRegex(rawKeyword);
-    const String server = 'https://maps.mail.ru/osm/tools/overpass/api/interpreter';
     
-    // Chia BBox thành 4 vùng (2x2 grid)
-    double midLat = (south + north) / 2;
-    double midLng = (west + east) / 2;
-    
-    List<String> bboxes = [
-      '$south,$west,$midLat,$midLng',      // Tây Nam
-      '$south,$midLng,$midLat,$east',       // Đông Nam  
-      '$midLat,$west,$north,$midLng',       // Tây Bắc
-      '$midLat,$midLng,$north,$east',       // Đông Bắc
+    // Danh sách 6 server Overpass
+    List<String> servers = [
+      'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+      'https://lz4.overpass-api.de/api/interpreter',
+      'https://overpass.kumi.systems/api/interpreter',
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.openstreetmap.ru/api/interpreter',
+      'https://api.openstreetmap.fr/oapi/interpreter',
     ];
     
-    // Tạo 8 query: 4 vùng x 2 loại (ref + name)
-    List<Future<http.Response>> futures = [];
+    // Query tìm theo REF (chính xác hơn) - [TỐI ƯU] Giảm timeout
+    String refQuery = """
+      [out:json][timeout:20];
+      way["highway"]["highway"!~"_link"]["ref"~"$flexibleRegex",i]($bbox);
+      out geom;
+    """;
     
-    for (int i = 0; i < bboxes.length; i++) {
-      String bbox = bboxes[i];
-      
-      // Query tìm theo REF
-      String refQuery = """
-        [out:json][timeout:10];
-        way["highway"]["highway"!~"_link"]["ref"~"$flexibleRegex",i]($bbox);
-        out geom;
-      """;
-      
-      // Query tìm theo NAME
-      String nameQuery = """
-        [out:json][timeout:10];
-        way["highway"]["highway"!~"_link"]["name"~"$flexibleRegex",i]($bbox);
-        out geom;
-      """;
-      
-      futures.add(
-        http.post(Uri.parse(server), body: refQuery)
-            .timeout(const Duration(seconds: 25))
-            .catchError((e) => http.Response('{"elements":[]}', 200))
-      );
-      
-      futures.add(
-        http.post(Uri.parse(server), body: nameQuery)
-            .timeout(const Duration(seconds: 25))
-            .catchError((e) => http.Response('{"elements":[]}', 200))
-      );
-    }
+    // Query tìm theo NAME
+    String nameQuery = """
+      [out:json][timeout:20];
+      way["highway"]["highway"!~"_link"]["name"~"$flexibleRegex",i]($bbox);
+      out geom;
+    """;
     
-    debugPrint('🚀 Đang gửi ${futures.length} query song song đến $server...');
+    debugPrint('🚀 Race giữa ${servers.length} server...');
 
     try {
       final apiStopwatch = Stopwatch()..start();
       
-      // Chạy tất cả query song song
-      List<http.Response> responses = await Future.wait(futures);
+      // Race giữa các server - chạy cả ref và name query song song
+      final results = await Future.wait([
+        _raceToFindServer(servers, refQuery).catchError((e) {
+          debugPrint('⚠️ Ref query lỗi: $e');
+          return http.Response('{"elements":[]}', 200);
+        }),
+        _raceToFindServer(servers, nameQuery).catchError((e) {
+          debugPrint('⚠️ Name query lỗi: $e');
+          return http.Response('{"elements":[]}', 200);
+        }),
+      ]);
       
       apiStopwatch.stop();
-      debugPrint('⏱️ Thời gian gọi API (${responses.length} query song song): ${apiStopwatch.elapsedMilliseconds}ms');
+      debugPrint('⏱️ Thời gian gọi API (race): ${apiStopwatch.elapsedMilliseconds}ms');
       
-      // Gộp kết quả từ tất cả response
+      // Gộp kết quả từ cả ref và name query
       Set<int> seenIds = {}; // Để loại bỏ trùng lặp
       List<Polyline> foundLines = [];
       int totalElements = 0;
       
-      for (int i = 0; i < responses.length; i++) {
-        if (responses[i].statusCode == 200) {
+      for (var response in results) {
+        if (response.statusCode == 200) {
           try {
-            final data = jsonDecode(responses[i].body);
+            final data = jsonDecode(response.body);
             if (data['elements'] != null) {
               for (var element in data['elements']) {
                 if (element['type'] == 'way' && element['geometry'] != null) {
@@ -1395,12 +1454,12 @@ class MatrixMapPageState extends State<MatrixMapPage> {
               }
             }
           } catch (e) {
-            debugPrint('⚠️ Lỗi parse response $i: $e');
+            debugPrint('⚠️ Lỗi parse response: $e');
           }
         }
       }
       
-      debugPrint('📊 Tổng hợp: $totalElements đường (đã loại ${seenIds.length - totalElements} trùng lặp)');
+      debugPrint('📊 Tổng: $totalElements đường unique');
       
       // Áp dụng logic lọc
       List<Polyline> filteredLines = _filterRelevantSegments(
@@ -1422,6 +1481,10 @@ class MatrixMapPageState extends State<MatrixMapPage> {
       debugPrint('⏱️ Thời gian xử lý & vẽ: ${drawStopwatch.elapsedMilliseconds}ms');
       
       if (clippedLines.isNotEmpty) {
+        // [MỚI] Lưu vào cache (lưu filteredLines để có thể cắt lại theo bounds khác)
+        _searchCache[cacheKey] = filteredLines;
+        debugPrint('💾 Đã lưu "$cacheKey" vào cache (${filteredLines.length} đường)');
+        
         _fitCameraToPolylines(clippedLines);
         
         await _blinkPolylines(3);
@@ -1453,7 +1516,7 @@ class MatrixMapPageState extends State<MatrixMapPage> {
         );
       }
     } catch (e) {
-      debugPrint("Lỗi tìm kiếm song song: $e");
+      debugPrint("Lỗi tìm kiếm: $e");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Lỗi: $e"),
@@ -2704,11 +2767,47 @@ class MatrixMapPageState extends State<MatrixMapPage> {
                     builder: (context, constraints) {
                       return Autocomplete<String>(
                         optionsBuilder: (TextEditingValue textEditingValue) async {
+                          // [MỚI] Gợi ý từ lịch sử tìm kiếm + cache khi online
+                          if (_searchSource == SearchSource.osm) {
+                            String query = textEditingValue.text.toUpperCase().trim();
+                            
+                            // Khi ô trống, hiển thị lịch sử tìm kiếm
+                            if (query.isEmpty) {
+                              // Hiển thị cache trước (có ⚡), sau đó lịch sử
+                              List<String> suggestions = [];
+                              for (var key in _searchCache.keys.take(5)) {
+                                suggestions.add('⚡ $key'); // Cache
+                              }
+                              for (var item in _searchHistory.take(10)) {
+                                if (!_searchCache.containsKey(item)) {
+                                  suggestions.add('🕒 $item'); // Lịch sử
+                                }
+                              }
+                              return suggestions;
+                            }
+                            
+                            // Khi có text, lọc theo query
+                            List<String> suggestions = [];
+                            // Cache phù hợp
+                            for (var key in _searchCache.keys) {
+                              if (key.contains(query)) {
+                                suggestions.add('⚡ $key');
+                              }
+                            }
+                            // Lịch sử phù hợp
+                            for (var item in _searchHistory) {
+                              if (item.contains(query) && !_searchCache.containsKey(item)) {
+                                suggestions.add('🕒 $item');
+                              }
+                            }
+                            return suggestions.take(10);
+                          }
+                          
+                          // Chế độ offline - gợi ý từ assets
                           if (textEditingValue.text.isEmpty) {
                             return const Iterable<String>.empty();
                           }
                           
-                          // Chỉ gợi ý khi tìm đường offline và dữ liệu đã load
                           if (_searchSource == SearchSource.offline) {
                             if (!RoadAssetService().isLoaded) {
                                await RoadAssetService().loadFromAssets();
@@ -2718,7 +2817,11 @@ class MatrixMapPageState extends State<MatrixMapPage> {
                           return const Iterable<String>.empty();
                         },
                         onSelected: (String selection) {
-                          _searchCtrl.text = selection;
+                          // [MỚI] Bỏ prefix emoji (⚡ hoặc 🕒) nếu có
+                          String cleanSelection = selection
+                              .replaceFirst('⚡ ', '')
+                              .replaceFirst('🕒 ', '');
+                          _searchCtrl.text = cleanSelection;
                         },
                         fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
                           // Sync giá trị từ _searchCtrl vào controller của Autocomplete khi init
