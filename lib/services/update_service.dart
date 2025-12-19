@@ -129,72 +129,113 @@ class UpdateService {
     required AppVersionInfo versionInfo,
     Function(double progress)? onProgress,
   }) async {
-    try {
-      // Xác định platform và URL download
-      String? downloadUrl;
-      String fileName;
-      
-      if (Platform.isWindows) {
-        downloadUrl = versionInfo.downloadUrl['windows'];
-        fileName = 'idmav_app_update.zip';
-      } else if (Platform.isAndroid) {
-        downloadUrl = versionInfo.downloadUrl['android'];
-        fileName = 'idmav_app_update.apk';
-      } else {
-        debugPrint('⚠️ Platform không được hỗ trợ');
-        return false;
-      }
-      
-      if (downloadUrl == null || downloadUrl.isEmpty) {
-        debugPrint('⚠️ Không có link download cho platform này');
-        return false;
-      }
-      
-      debugPrint('📥 Bắt đầu download: $downloadUrl');
-      
-      // Lấy thư mục download
-      final directory = await getTemporaryDirectory();
-      final filePath = '${directory.path}/$fileName';
-      final file = File(filePath);
-      
-      // Download file với progress
-      final request = http.Request('GET', Uri.parse(downloadUrl));
-      final response = await http.Client().send(request);
-      
-      if (response.statusCode != 200) {
-        debugPrint('❌ Download thất bại: ${response.statusCode}');
-        return false;
-      }
-      
-      final contentLength = response.contentLength ?? 0;
-      int received = 0;
-      List<int> bytes = [];
-      
-      await for (var chunk in response.stream) {
-        bytes.addAll(chunk);
-        received += chunk.length;
-        
-        if (contentLength > 0 && onProgress != null) {
-          onProgress(received / contentLength);
-        }
-      }
-      
-      // Ghi file
-      await file.writeAsBytes(bytes);
-      debugPrint('✅ Download hoàn tất: $filePath');
-      
-      // Cài đặt
-      if (Platform.isWindows) {
-        return await _installWindows(filePath);
-      } else if (Platform.isAndroid) {
-        return await _installAndroid(filePath);
-      }
-      
-      return false;
-    } catch (e) {
-      debugPrint('❌ Lỗi download/install: $e');
+    // Xác định platform và URL download
+    String? downloadUrl;
+    String fileName;
+    
+    if (Platform.isWindows) {
+      downloadUrl = versionInfo.downloadUrl['windows'];
+      fileName = 'idmav_app_update.zip';
+    } else if (Platform.isAndroid) {
+      downloadUrl = versionInfo.downloadUrl['android'];
+      fileName = 'idmav_app_update.apk';
+    } else {
+      debugPrint('⚠️ Platform không được hỗ trợ');
       return false;
     }
+    
+    if (downloadUrl == null || downloadUrl.isEmpty) {
+      debugPrint('⚠️ Không có link download cho platform này');
+      return false;
+    }
+    
+    // Retry 3 lần
+    for (int attempt = 1; attempt <= 3; attempt++) {
+      debugPrint('📥 Bắt đầu download (lần $attempt): $downloadUrl');
+      
+      try {
+        // Lấy thư mục download
+        final directory = await getTemporaryDirectory();
+        final filePath = '${directory.path}/$fileName';
+        final file = File(filePath);
+        
+        // Xóa file cũ nếu có
+        if (await file.exists()) {
+          await file.delete();
+        }
+        
+        // Tạo HttpClient với timeout dài
+        final httpClient = HttpClient();
+        httpClient.connectionTimeout = const Duration(seconds: 30);
+        
+        final request = await httpClient.getUrl(Uri.parse(downloadUrl));
+        final response = await request.close();
+        
+        if (response.statusCode != 200) {
+          debugPrint('❌ Download thất bại: ${response.statusCode}');
+          if (attempt < 3) {
+            debugPrint('🔄 Thử lại sau 2 giây...');
+            await Future.delayed(const Duration(seconds: 2));
+            continue;
+          }
+          return false;
+        }
+        
+        final contentLength = response.contentLength;
+        int received = 0;
+        
+        // Stream trực tiếp vào file (không lưu RAM)
+        final sink = file.openWrite();
+        
+        await for (var chunk in response) {
+          sink.add(chunk);
+          received += chunk.length;
+          
+          if (contentLength > 0 && onProgress != null) {
+            onProgress(received / contentLength);
+          }
+        }
+        
+        await sink.flush();
+        await sink.close();
+        httpClient.close();
+        
+        debugPrint('✅ Download hoàn tất: $filePath (${(received / 1024 / 1024).toStringAsFixed(1)} MB)');
+        
+        // Verify file size
+        final downloadedFile = File(filePath);
+        final fileSize = await downloadedFile.length();
+        if (fileSize < 1000000) { // < 1MB = lỗi
+          debugPrint('❌ File quá nhỏ, có thể bị lỗi: $fileSize bytes');
+          if (attempt < 3) {
+            debugPrint('🔄 Thử lại sau 2 giây...');
+            await Future.delayed(const Duration(seconds: 2));
+            continue;
+          }
+          return false;
+        }
+        
+        // Cài đặt
+        if (Platform.isWindows) {
+          return await _installWindows(filePath);
+        } else if (Platform.isAndroid) {
+          return await _installAndroid(filePath);
+        }
+        
+        return false;
+        
+      } catch (e) {
+        debugPrint('❌ Lỗi download (lần $attempt): $e');
+        if (attempt < 3) {
+          debugPrint('🔄 Thử lại sau 2 giây...');
+          await Future.delayed(const Duration(seconds: 2));
+          continue;
+        }
+        return false;
+      }
+    }
+    
+    return false;
   }
 
   /// Cài đặt trên Windows
