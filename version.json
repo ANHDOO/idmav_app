@@ -1,12 +1,12 @@
 {
-  "version": "1.0.0",
-  "build": 1,
-  "releaseDate": "2025-12-19",
-  "releaseNotes": "• Phiên bản đầu tiên\n• Hỗ trợ tìm kiếm đường offline và online\n• Hiển thị ranh giới tỉnh thành",
-  "downloadUrl": {
-    "windows": "https://github.com/ANHDOO/idmav_app/releases/download/v1.0.0/idmav_app_windows.zip",
-    "android": "https://github.com/ANHDOO/idmav_app/releases/download/v1.0.0/idmav_app.apk"
-  },
-  "required": false,
-  "minVersion": "1.0.0"
+    "version": "1.1.0",
+    "build": 1,
+    "releaseDate": "2025-12-19",
+    "releaseNotes": "• Phiên bản 1.1.0\n• Tối ưu tìm kiếm offline/online\n• Thêm cache và lịch sử tìm kiếm\n• Thêm tính năng tự động cập nhật",
+    "downloadUrl": {
+        "windows": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.0/idmav_app_windows.zip",
+        "android": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.0/app-release.apk"
+    },
+    "required": false,
+    "minVersion": "1.0.0"
 }
