@@ -1,11 +1,11 @@
 {
-    "version": "1.1.0",
-    "build": 1,
+    "version": "1.1.2",
+    "build": 3,
     "releaseDate": "2025-12-19",
-    "releaseNotes": "• Phiên bản 1.1.0\n• Tối ưu tìm kiếm offline/online\n• Thêm cache và lịch sử tìm kiếm\n• Thêm tính năng tự động cập nhật",
+    "releaseNotes": "• Phiên bản 1.1.2\n• Xóa tính năng tìm online\n• Tối ưu BLE cho Android 15\n• Sửa quyền Bluetooth",
     "downloadUrl": {
-        "windows": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.0/idmav_app_windows.zip",
-        "android": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.0/app-release.apk"
+        "windows": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.2/idmav_app_windows.zip",
+        "android": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.2/app-release.apk"
     },
     "required": false,
     "minVersion": "1.0.0"
