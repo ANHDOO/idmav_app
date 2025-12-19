@@ -53,6 +53,8 @@ dependencies:
   image_picker: ^1.0.7        # Chọn ảnh từ gallery/camera
   google_mlkit_text_recognition: ^0.15.0  # OCR nhận dạng văn bản
   intl: ^0.19.0               # Format ngày tháng
+  package_info_plus: ^9.0.0
+  open_filex: ^4.7.0
 
 flutter_icons:
   android: true

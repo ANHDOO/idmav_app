@@ -333,6 +333,14 @@ class RoadAssetService {
   }
 
   /// Tìm đường theo ref (VD: "QL1", "CT.03")
+  /// Trả về TẤT CẢ các VnRoadData có ref match (có thể nhiều entries)
+  List<VnRoadData> findAllByRef(String ref) {
+    if (!isLoaded) return [];
+    
+    return _roads.where((r) => isSmartMatch(r.ref, ref)).toList();
+  }
+
+  /// Tìm đường đầu tiên theo ref (backward compatibility)
   VnRoadData? findByRef(String ref) {
     if (!isLoaded) return null;
     

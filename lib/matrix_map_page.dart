@@ -17,6 +17,7 @@ import 'data/vn_roads.dart'; // Quốc lộ & Cao tốc VN từ assets
 import 'widgets/import_data_dialog.dart'; // Dialog import/export dữ liệu
 import 'services/offline_map_service.dart'; // Offline map caching
 import 'services/vietmap_service.dart'; // VietMap API service
+import 'services/update_service.dart'; // Auto-update service
 
 const Color primaryDark = Color(0xFF1A2980);
 const Color primaryLight = Color(0xFF26D0CE);
@@ -230,6 +231,173 @@ class MatrixMapPageState extends State<MatrixMapPage> {
       await RoadAssetService().loadFromAssets();
       debugPrint("✅ Preloaded ${RoadAssetService().count} tuyến đường cho gợi ý");
     });
+
+    // [MỚI] Check update sau 3 giây để không ảnh hưởng trải nghiệm
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) _checkForUpdate();
+    });
+  }
+
+  /// [MỚI] Kiểm tra cập nhật từ server
+  Future<void> _checkForUpdate() async {
+    try {
+      final updateInfo = await UpdateService().checkForUpdate();
+      
+      if (updateInfo != null && mounted) {
+        _showUpdateDialog(updateInfo);
+      }
+    } catch (e) {
+      debugPrint('⚠️ Lỗi check update: $e');
+    }
+  }
+
+  /// [MỚI] Hiển thị dialog thông báo có bản cập nhật
+  void _showUpdateDialog(AppVersionInfo versionInfo) {
+    showDialog(
+      context: context,
+      barrierDismissible: !versionInfo.required,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.system_update, color: Colors.green, size: 28),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Có bản cập nhật mới!', 
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  Text('Phiên bản ${versionInfo.version}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                ],
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Có gì mới:', 
+              style: TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                versionInfo.releaseNotes,
+                style: const TextStyle(fontSize: 13),
+              ),
+            ),
+            if (versionInfo.required) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_amber, color: Colors.orange[700], size: 20),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text('Bản cập nhật này là bắt buộc',
+                        style: TextStyle(fontSize: 12, color: Colors.orange)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          if (!versionInfo.required)
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Để sau'),
+            ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+            icon: const Icon(Icons.download, size: 20),
+            label: const Text('Cập nhật ngay'),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _startDownloadUpdate(versionInfo);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// [MỚI] Bắt đầu download và cài đặt update
+  void _startDownloadUpdate(AppVersionInfo versionInfo) {
+    double progress = 0;
+    bool isDownloading = true;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          // Bắt đầu download
+          if (isDownloading) {
+            isDownloading = false;
+            UpdateService().downloadAndInstall(
+              versionInfo: versionInfo,
+              onProgress: (p) {
+                setDialogState(() => progress = p);
+              },
+            ).then((success) {
+              if (!success && mounted) {
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Lỗi tải cập nhật. Vui lòng thử lại sau.'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            });
+          }
+          
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(height: 20),
+                Text(
+                  progress < 1 
+                    ? 'Đang tải: ${(progress * 100).toStringAsFixed(0)}%'
+                    : 'Đang cài đặt...',
+                  style: const TextStyle(fontSize: 14),
+                ),
+                const SizedBox(height: 12),
+                LinearProgressIndicator(value: progress),
+              ],
+            ),
+          );
+        },
+      ),
+    );
   }
 
   // --- SETTINGS (CẬP NHẬT ĐỂ LƯU THÊM ID TẤM) ---
@@ -1294,29 +1462,56 @@ class MatrixMapPageState extends State<MatrixMapPage> {
 
   // --- TÌM RANH GIỚI QUA NOMINATIM (NHANH HƠN) ---
 
-  /// [RACE SEARCH] Tìm kiếm online - race giữa nhiều server
-  /// Server nào trả về trước thì dùng kết quả đó
-  /// [CẢI TIẾN] Có cache và lịch sử tìm kiếm
+  /// [SMART SEARCH] Tìm kiếm thông minh
+  /// 1. Tìm trong OFFLINE trước (nhanh)
+  /// 2. Nếu CÓ → dùng kết quả offline, NGỪNG (không gọi online)
+  /// 3. Nếu KHÔNG CÓ → tìm ONLINE → lưu vào cache để lần sau dùng
   Future<void> _searchOnline() async {
     String rawKeyword = _searchCtrl.text.trim();
     if (rawKeyword.isEmpty) return;
 
     String cacheKey = rawKeyword.toUpperCase();
     
-    // [MỚI] Kiểm tra cache - nếu đã tìm trước đó thì dùng lại
-    if (_searchCache.containsKey(cacheKey)) {
-      debugPrint('📦 CACHE HIT: "$cacheKey" - Lấy từ cache');
-      final Stopwatch cacheStopwatch = Stopwatch()..start();
+    // ⏱️ Bắt đầu đo thời gian
+    final Stopwatch totalStopwatch = Stopwatch()..start();
+    debugPrint('\n🔍 ========== BẮT ĐẦU SMART SEARCH: "$cacheKey" ==========');
+
+    setState(() {
+      _loadingStatus = "Đang tìm kiếm...";
+      _displayedPolylines.clear();
+    });
+
+    // ========== BƯỚC 1: TÌM TRONG OFFLINE TRƯỚC ==========
+    List<VnRoadData> offlineRoads = RoadAssetService().findAllByRef(cacheKey);
+    
+    if (offlineRoads.isNotEmpty) {
+      debugPrint('📂 Offline: Tìm thấy ${offlineRoads.length} entries cho $cacheKey');
       
-      List<Polyline> cachedLines = _searchCache[cacheKey]!;
+      // Gộp TẤT CẢ polylines từ các VnRoadData match
+      List<Polyline> allOfflinePolylines = [];
+      for (var road in offlineRoads) {
+        allOfflinePolylines.addAll(RoadAssetService().toPolylines(
+          road,
+          color: Colors.blueAccent,
+          strokeWidth: 7.0,
+        ));
+      }
       
-      // Cắt lại theo bounds hiện tại (có thể bounds đã thay đổi)
+      debugPrint('📂 Offline: Tổng ${allOfflinePolylines.length} polylines');
+      
+      // Cắt theo bounds hiện tại
       LatLngBounds bounds = _currentBounds ?? _mapController.camera.visibleBounds;
-      List<Polyline> clippedLines = _clipPolylinesToBounds(cachedLines, bounds);
+      List<Polyline> clippedLines = _clipPolylinesToBounds(allOfflinePolylines, bounds);
+      
+      totalStopwatch.stop();
+      final offlineMs = totalStopwatch.elapsedMilliseconds;
+      debugPrint('⚡ OFFLINE THẮNG! (${clippedLines.length} kết quả, ${offlineMs}ms)');
+      debugPrint('🔍 ========== KẾT THÚC - DÙNG OFFLINE ==========\n');
       
       setState(() {
         _displayedPolylines = clippedLines;
         _hasRoadSelected = clippedLines.isNotEmpty;
+        _loadingStatus = null;
       });
       
       if (clippedLines.isNotEmpty) {
@@ -1324,11 +1519,10 @@ class MatrixMapPageState extends State<MatrixMapPage> {
         await _blinkPolylines(3);
         _showAddToPanelDialog(cacheKey, clippedLines);
         
-        cacheStopwatch.stop();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              "⚡ Cache: ${clippedLines.length} kết quả (${cacheStopwatch.elapsedMilliseconds}ms)",
+              "⚡ Offline: ${clippedLines.length} kết quả (${offlineMs}ms)",
             ),
             backgroundColor: Colors.green,
           ),
@@ -1338,30 +1532,54 @@ class MatrixMapPageState extends State<MatrixMapPage> {
           const SnackBar(content: Text("Không có kết quả trong vùng hiện tại")),
         );
       }
-      return; // Không cần gọi API
+      
+      // Thêm vào lịch sử
+      _addToSearchHistory(cacheKey);
+      return; // NGỪNG - không cần gọi online
     }
     
-    // [MỚI] Thêm vào lịch sử tìm kiếm
-    if (!_searchHistory.contains(cacheKey)) {
-      _searchHistory.insert(0, cacheKey); // Mới nhất ở đầu
-      if (_searchHistory.length > 20) {
-        _searchHistory = _searchHistory.sublist(0, 20);
+    // ========== BƯỚC 2: KIỂM TRA CACHE (KẾT QUẢ ONLINE ĐÃ LƯU) ==========
+    if (_searchCache.containsKey(cacheKey)) {
+      debugPrint('📦 CACHE HIT: "$cacheKey"');
+      
+      List<Polyline> cachedLines = _searchCache[cacheKey]!;
+      LatLngBounds bounds = _currentBounds ?? _mapController.camera.visibleBounds;
+      List<Polyline> clippedLines = _clipPolylinesToBounds(cachedLines, bounds);
+      
+      totalStopwatch.stop();
+      final cacheMs = totalStopwatch.elapsedMilliseconds;
+      debugPrint('⚡ CACHE THẮNG! (${clippedLines.length} kết quả, ${cacheMs}ms)');
+      
+      setState(() {
+        _displayedPolylines = clippedLines;
+        _hasRoadSelected = clippedLines.isNotEmpty;
+        _loadingStatus = null;
+      });
+      
+      if (clippedLines.isNotEmpty) {
+        _fitCameraToPolylines(clippedLines);
+        await _blinkPolylines(3);
+        _showAddToPanelDialog(cacheKey, clippedLines);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("⚡ Cache: ${clippedLines.length} kết quả (${cacheMs}ms)"),
+            backgroundColor: Colors.green,
+          ),
+        );
       }
-      _saveAllSettings(); // Lưu lịch sử
+      return; // NGỪNG - đã có trong cache
     }
 
-    // ⏱️ Bắt đầu đo thời gian
-    final Stopwatch totalStopwatch = Stopwatch()..start();
-    debugPrint('\n🔍 ========== BẮT ĐẦU TÌM KIẾM ONLINE (RACE): "$rawKeyword" ==========');
+    // ========== BƯỚC 3: TÌM ONLINE (KHÔNG CÓ TRONG OFFLINE VÀ CACHE) ==========
+    debugPrint('🌐 Không có trong offline/cache - Gọi API...');
+    
+    // Thêm vào lịch sử
+    _addToSearchHistory(cacheKey);
 
-    LatLngBounds searchBounds =
-        _currentBounds ?? _mapController.camera.visibleBounds;
-    setState(() {
-      _loadingStatus = "Đang tìm kiếm online...";
-      _displayedPolylines.clear();
-    });
-
-    // [TỐI ƯU] Giảm buffer từ 0.5 xuống 0.2 để query nhanh hơn
+    LatLngBounds searchBounds = _currentBounds ?? _mapController.camera.visibleBounds;
+    
+    // Giảm buffer để query nhanh hơn
     double buffer = 0.2;
     double south = searchBounds.south - buffer;
     double north = searchBounds.north + buffer;
@@ -1371,7 +1589,6 @@ class MatrixMapPageState extends State<MatrixMapPage> {
     
     String flexibleRegex = _createSuperFlexibleRegex(rawKeyword);
     
-    // Danh sách 6 server Overpass
     List<String> servers = [
       'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
       'https://lz4.overpass-api.de/api/interpreter',
@@ -1381,14 +1598,12 @@ class MatrixMapPageState extends State<MatrixMapPage> {
       'https://api.openstreetmap.fr/oapi/interpreter',
     ];
     
-    // Query tìm theo REF (chính xác hơn) - [TỐI ƯU] Giảm timeout
     String refQuery = """
       [out:json][timeout:20];
       way["highway"]["highway"!~"_link"]["ref"~"$flexibleRegex",i]($bbox);
       out geom;
     """;
     
-    // Query tìm theo NAME
     String nameQuery = """
       [out:json][timeout:20];
       way["highway"]["highway"!~"_link"]["name"~"$flexibleRegex",i]($bbox);
@@ -1400,7 +1615,6 @@ class MatrixMapPageState extends State<MatrixMapPage> {
     try {
       final apiStopwatch = Stopwatch()..start();
       
-      // Race giữa các server - chạy cả ref và name query song song
       final results = await Future.wait([
         _raceToFindServer(servers, refQuery).catchError((e) {
           debugPrint('⚠️ Ref query lỗi: $e');
@@ -1413,10 +1627,10 @@ class MatrixMapPageState extends State<MatrixMapPage> {
       ]);
       
       apiStopwatch.stop();
-      debugPrint('⏱️ Thời gian gọi API (race): ${apiStopwatch.elapsedMilliseconds}ms');
+      debugPrint('⏱️ API time: ${apiStopwatch.elapsedMilliseconds}ms');
       
-      // Gộp kết quả từ cả ref và name query
-      Set<int> seenIds = {}; // Để loại bỏ trùng lặp
+      // Parse kết quả
+      Set<int> seenIds = {};
       List<Polyline> foundLines = [];
       int totalElements = 0;
       
@@ -1427,7 +1641,6 @@ class MatrixMapPageState extends State<MatrixMapPage> {
             if (data['elements'] != null) {
               for (var element in data['elements']) {
                 if (element['type'] == 'way' && element['geometry'] != null) {
-                  // Loại bỏ trùng lặp theo ID
                   int wayId = element['id'] ?? 0;
                   if (seenIds.contains(wayId)) continue;
                   seenIds.add(wayId);
@@ -1454,77 +1667,68 @@ class MatrixMapPageState extends State<MatrixMapPage> {
               }
             }
           } catch (e) {
-            debugPrint('⚠️ Lỗi parse response: $e');
+            debugPrint('⚠️ Parse error: $e');
           }
         }
       }
       
-      debugPrint('📊 Tổng: $totalElements đường unique');
+      debugPrint('📊 Online: $totalElements kết quả');
       
-      // Áp dụng logic lọc
-      List<Polyline> filteredLines = _filterRelevantSegments(
-        foundLines, 
-        thresholdRatio: 0.0,
-      );
-
-      // Cắt gọn trong khung
+      List<Polyline> filteredLines = _filterRelevantSegments(foundLines, thresholdRatio: 0.0);
       LatLngBounds bounds = _currentBounds ?? _mapController.camera.visibleBounds;
       List<Polyline> clippedLines = _clipPolylinesToBounds(filteredLines, bounds);
       
-      // ⏱️ Đo thời gian vẽ
-      final drawStopwatch = Stopwatch()..start();
       setState(() {
         _displayedPolylines = clippedLines;
         _hasRoadSelected = clippedLines.isNotEmpty;
       });
-      drawStopwatch.stop();
-      debugPrint('⏱️ Thời gian xử lý & vẽ: ${drawStopwatch.elapsedMilliseconds}ms');
       
       if (clippedLines.isNotEmpty) {
-        // [MỚI] Lưu vào cache (lưu filteredLines để có thể cắt lại theo bounds khác)
+        // LƯU VÀO CACHE để lần sau dùng
         _searchCache[cacheKey] = filteredLines;
         debugPrint('💾 Đã lưu "$cacheKey" vào cache (${filteredLines.length} đường)');
         
         _fitCameraToPolylines(clippedLines);
-        
         await _blinkPolylines(3);
+        _showAddToPanelDialog(cacheKey, clippedLines);
         
-        String searchedRef = rawKeyword.toUpperCase();
-        _showAddToPanelDialog(searchedRef, clippedLines);
-        
-        // ⏱️ Tổng thời gian (không tính blink)
         totalStopwatch.stop();
         final totalMs = totalStopwatch.elapsedMilliseconds;
-        debugPrint('⏱️ TỔNG THỜI GIAN: ${totalMs}ms (${(totalMs/1000).toStringAsFixed(1)}s)');
-        debugPrint('🔍 ========== KẾT THÚC TÌM KIẾM ==========\n');
+        debugPrint('⏱️ TỔNG: ${totalMs}ms (${(totalMs/1000).toStringAsFixed(1)}s)');
+        debugPrint('🔍 ========== KẾT THÚC - DÙNG ONLINE ==========\n');
         
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              "✅ Tìm thấy ${clippedLines.length} kết quả online (${(totalMs/1000).toStringAsFixed(1)}s)",
+              "✅ Online: ${clippedLines.length} kết quả (${(totalMs/1000).toStringAsFixed(1)}s)",
             ),
           ),
         );
       } else {
         totalStopwatch.stop();
-        debugPrint('⏱️ TỔNG THỜI GIAN (không có kết quả): ${totalStopwatch.elapsedMilliseconds}ms');
-        debugPrint('🔍 ========== KẾT THÚC TÌM KIẾM ==========\n');
+        debugPrint('🔍 ========== KẾT THÚC - KHÔNG CÓ KẾT QUẢ ==========\n');
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Không tìm thấy trên các trục đường chính!"),
-          ),
+          const SnackBar(content: Text("Không tìm thấy trên các trục đường chính!")),
         );
       }
     } catch (e) {
-      debugPrint("Lỗi tìm kiếm: $e");
+      debugPrint("Lỗi online search: $e");
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Lỗi: $e"),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text("Lỗi: $e"), backgroundColor: Colors.red),
       );
     } finally {
       setState(() => _loadingStatus = null);
+    }
+  }
+
+  /// Helper: Thêm vào lịch sử tìm kiếm
+  void _addToSearchHistory(String keyword) {
+    if (!_searchHistory.contains(keyword)) {
+      _searchHistory.insert(0, keyword);
+      if (_searchHistory.length > 20) {
+        _searchHistory = _searchHistory.sublist(0, 20);
+      }
+      _saveAllSettings();
     }
   }
 
