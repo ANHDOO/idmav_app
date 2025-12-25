@@ -306,4 +306,166 @@ del "%~f0"
       return false;
     }
   }
+
+  /// [MỚI] Khởi tạo quy trình check update (thường gọi ở Home/MainPage)
+  void initUpdateCheck(BuildContext context) {
+    Future.delayed(const Duration(seconds: 3), () async {
+      try {
+        final updateInfo = await checkForUpdate();
+        if (updateInfo != null && context.mounted) {
+          _showUpdateDialog(context, updateInfo);
+        }
+      } catch (e) {
+        debugPrint('⚠️ Lỗi check update tự động: $e');
+      }
+    });
+  }
+
+  /// [MỚI] Hiển thị dialog thông báo có bản cập nhật
+  void _showUpdateDialog(BuildContext context, AppVersionInfo versionInfo) {
+    showDialog(
+      context: context,
+      barrierDismissible: !versionInfo.required,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.system_update, color: Colors.green, size: 28),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Có bản cập nhật mới!', 
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  Text('Phiên bản ${versionInfo.version}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                ],
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Có gì mới:', 
+              style: TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                versionInfo.releaseNotes,
+                style: const TextStyle(fontSize: 13),
+              ),
+            ),
+            if (versionInfo.required) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_amber, color: Colors.orange[700], size: 20),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text('Bản cập nhật này là bắt buộc',
+                        style: TextStyle(fontSize: 12, color: Colors.orange)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          if (!versionInfo.required)
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Để sau'),
+            ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+            icon: const Icon(Icons.download, size: 20),
+            label: const Text('Cập nhật ngay'),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _startDownloadUpdate(context, versionInfo);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// [MỚI] Bắt đầu download và cài đặt update
+  void _startDownloadUpdate(BuildContext context, AppVersionInfo versionInfo) {
+    double progress = 0;
+    bool isDownloading = true;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          if (isDownloading) {
+            isDownloading = false;
+            downloadAndInstall(
+              versionInfo: versionInfo,
+              onProgress: (p) {
+                setDialogState(() => progress = p);
+              },
+            ).then((success) {
+              if (!success && context.mounted) {
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Lỗi tải cập nhật. Vui lòng thử lại sau.'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            });
+          }
+          
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(height: 20),
+                Text(
+                  progress < 1 
+                    ? 'Đang tải: ${(progress * 100).toStringAsFixed(0)}%'
+                    : 'Đang cài đặt...',
+                  style: const TextStyle(fontSize: 14),
+                ),
+                const SizedBox(height: 12),
+                LinearProgressIndicator(value: progress),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
 }

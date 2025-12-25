@@ -187,28 +187,23 @@ class MainNavigationState extends State<MainNavigation> {
           ),
 
           // === DRAGGABLE FAB (overlay trên tất cả) ===
-          DraggableControlFAB(
-            isConnected: _isConnected,
-            onCommand: (cmd) async {
-              if (_isConnected && _homePageKey.currentState != null) {
-                await sendLedCommand(cmd);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Đã gửi: $cmd'),
-                    duration: const Duration(milliseconds: 500),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Chưa kết nối Bluetooth!'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            },
-          ),
+          // [SỬA] Chỉ hiện FAB khi đã kết nối Bluetooth để tránh rối mắt
+          if (_isConnected)
+            DraggableControlFAB(
+              isConnected: _isConnected,
+              onCommand: (cmd) async {
+                if (_homePageKey.currentState != null) {
+                  await sendLedCommand(cmd);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Đã gửi: $cmd'),
+                      duration: const Duration(milliseconds: 500),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              },
+            ),
         ],
       ),
 

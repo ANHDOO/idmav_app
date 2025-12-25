@@ -75,7 +75,13 @@ class _ImportDataDialogState extends State<ImportDataDialog>
   /// Parse DMS format: "21° 47' 0" N" → 21.7833
   double? _parseDMS(String input) {
     try {
-      input = input.trim().toUpperCase();
+      // Tiền xử lý: Thay thế 'O'/'o' nhầm bằng '0', chuẩn hóa các ký tự đặc biệt
+      input = input.trim().toUpperCase()
+          .replaceAll(RegExp(r'[O\u03BF\u03BF]'), '0') // Thay chữ O thành số 0
+          .replaceAll('′', "'")
+          .replaceAll('″', '"')
+          .replaceAll('’', "'")
+          .replaceAll('”', '"');
       
       // Decimal simple
       double? simple = double.tryParse(input.replaceAll(RegExp(r'[NSEW]'), '').trim());
@@ -84,9 +90,9 @@ class _ImportDataDialogState extends State<ImportDataDialog>
         return isNegative ? -simple : simple;
       }
       
-      // Parse DMS - dùng Unicode để tránh lỗi escape
-      // Matches: 21° 47' 0" N hoặc 21°47′0″N
-      RegExp regex = RegExp(r"(\d+)\s*°\s*(\d+)?\s*['\u2032]?\s*(\d+\.?\d*)?\s*[" + '"' + r"\u2033]?\s*([NSEW])?");
+      // Parse DMS - dùng regex linh hoạt hơn cho nhiều định dạng
+      // Matches: 21° 47' 0" N, 21-47-0 N, 21.47.0 N, etc.
+      RegExp regex = RegExp(r"(\d+)\s*[°\-\s\.]\s*(\d+)?\s*['\.\s\-]?\s*(\d+\.?\d*)?\s*[" + '"' + r"\s\-]?\s*([NSEW])?");
       Match? match = regex.firstMatch(input);
       if (match == null) return null;
       
@@ -260,24 +266,44 @@ class _ImportDataDialogState extends State<ImportDataDialog>
     
     double? north, south, east, west;
 
-    // Tìm tất cả số có dấu ° (DMS format)
-    RegExp dmsPattern = RegExp(r"(\d+)\s*°\s*(\d+)?\s*['\u2032]?\s*(\d+\.?\d*)?\s*[" + '"' + r"\u2033]?\s*([NSEW])?");
+    // Tìm tất cả ứng cử viên tọa độ (DMS hoặc Decimal cao độ)
+    RegExp dmsCandidate = RegExp(r"(\d+)\s*[°\-\s\.]\s*(\d+)?\s*['\.\s\-]?\s*(\d+\.?\d*)?\s*[" + '"' + r"\s\-]?\s*([NSEW])?");
+    RegExp decimalCandidate = RegExp(r"(\d{1,2}\.\d{4,})|(\d{3}\.\d{4,})");
+    
     List<double> latitudes = [];
     List<double> longitudes = [];
     
-    for (Match m in dmsPattern.allMatches(text)) {
-      double? val = _parseDMS(m.group(0) ?? '');
+    // Ưu tiên DMS trước
+    for (Match m in dmsCandidate.allMatches(text)) {
+      String fullMatch = m.group(0) ?? '';
+      if (fullMatch.length < 5) continue; // Tránh các số đơn lẻ vô nghĩa
+      
+      double? val = _parseDMS(fullMatch);
       if (val != null) {
         String dir = m.group(4) ?? '';
-        // Latitude thường < 50 cho VN, Longitude >= 100
+        // Một số OCR gộp chung kinh vĩ vào 1 dòng, ta thử tách ra
         if (dir == 'N' || dir == 'S' || (val > 0 && val < 50)) {
           latitudes.add(val);
-        } else if (dir == 'E' || dir == 'W' || val >= 100) {
+        } else if (dir == 'E' || dir == 'W' || val >= 80) {
           longitudes.add(val);
         }
       }
     }
-
+    
+    // Nếu chưa đủ, tìm thêm Decimal (>= 4 chữ số thập phân cho chính xác)
+    if (latitudes.length < 2 || longitudes.length < 2) {
+      for (Match m in decimalCandidate.allMatches(text)) {
+        double? val = double.tryParse(m.group(0) ?? '');
+        if (val != null) {
+          if (val > 0 && val < 50 && !latitudes.contains(val)) {
+            latitudes.add(val);
+          } else if (val >= 80 && val < 180 && !longitudes.contains(val)) {
+            longitudes.add(val);
+          }
+        }
+      }
+    }
+    
     if (latitudes.length >= 2 && longitudes.length >= 2) {
       latitudes.sort();
       longitudes.sort();
@@ -785,10 +811,30 @@ class _ImportDataDialogState extends State<ImportDataDialog>
       if (recognizedText.text.isEmpty) {
         setState(() => _errorMessage = 'Không tìm thấy văn bản trong ảnh');
       } else {
-        setState(() => _ocrResultText = recognizedText.text);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✓ Đã quét xong! Nhấn "Phân tích tọa độ" để tiếp tục')),
-        );
+        // [TỐI ƯU] Lọc chỉ lấy các dòng có khả năng là tọa độ
+        // Bao gồm: Có dấu độ °, có hướng N,S,E,W, hoặc có nhiều dấu thập phân
+        final List<String> filteredLines = [];
+        final coordPattern = RegExp(r"[°NSEW']|\d{1,3}\.\d{4,}", caseSensitive: false);
+        
+        for (TextBlock block in recognizedText.blocks) {
+          for (TextLine line in block.lines) {
+            if (coordPattern.hasMatch(line.text)) {
+              filteredLines.add(line.text.trim());
+            }
+          }
+        }
+        
+        String result = filteredLines.join('\n');
+        
+        if (result.isEmpty) {
+          setState(() => _errorMessage = 'Không nhận diện được tọa độ nào trong ảnh. Hãy thử ảnh rõ nét hơn.');
+          setState(() => _ocrResultText = recognizedText.text); // Vẫn hiện text gốc để debug
+        } else {
+          setState(() => _ocrResultText = result);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('✓ Đã lọc xong tọa độ! Nhấn "Phân tích tọa độ" để tiếp tục')),
+          );
+        }
       }
     } catch (e) {
       setState(() => _errorMessage = 'Lỗi OCR: $e');
