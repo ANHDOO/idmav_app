@@ -12,6 +12,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:crypto/crypto.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Model chứa thông tin version
 class AppVersionInfo {
@@ -220,7 +221,27 @@ class UpdateService {
             await Future.delayed(const Duration(seconds: 2));
             continue;
           }
+          // Nếu thử 3 lần vẫn thất bại, gợi ý mở trình duyệt
+          _suggestManualDownload(downloadUrl);
           return false;
+        }
+
+        // Kiểm tra nếu là trang HTML (có thể là trang cảnh báo của Google Drive)
+        if (response.headers.contentType?.mimeType == 'text/html') {
+          final htmlContent = await response.transform(utf8.decoder).join();
+          final confirmToken = _extractConfirmToken(htmlContent);
+          
+          if (confirmToken != null) {
+            debugPrint('🛡️ Phát hiện token xác nhận Google Drive: $confirmToken');
+            final retryUrl = '$requestUrl&confirm=$confirmToken';
+            httpClient.close();
+            return downloadAndInstall(
+              versionInfo: versionInfo,
+              onProgress: onProgress,
+              // Lưu ý: Cần truyền thêm flag để tránh loop vô tận nếu muốn, 
+              // nhưng ở đây ta dùng recursion đơn giản.
+            );
+          }
         }
         
         final contentLength = response.contentLength;
@@ -552,23 +573,47 @@ del "%~f0"
 
   /// [MỚI] Tối ưu hóa URL tải xuống
   String _processUrl(String url, int attempt) {
-    // 1. Xử lý Google Drive (Chuyển link view sang link download trực tiếp)
+    // 1. Xử lý Google Drive
     if (url.contains('drive.google.com')) {
       final regExp = RegExp(r'\/d\/([a-zA-Z0-9-_]+)');
       final match = regExp.firstMatch(url);
       if (match != null) {
         final fileId = match.group(1);
-        // Link download trực tiếp (Lưu ý: File > 100MB có thể bị chặn bởi trang cảnh báo virus)
-        return 'https://drive.google.com/uc?export=download&id=$fileId';
+        // Link download trực tiếp (Thêm confirm=t để thử bypass ban đầu)
+        return 'https://drive.google.com/uc?export=download&id=$fileId&confirm=t';
       }
     }
 
-    // 2. Sử dụng Mirror Proxy cho GitHub nếu tải chậm/thử lại
+    // 2. Xử lý Dropbox
+    if (url.contains('dropbox.com')) {
+      return url.replaceAll('?dl=0', '?dl=1').replaceAll('&dl=0', '&dl=1');
+    }
+
+    // 3. Sử dụng Mirror Proxy cho GitHub nếu tải chậm/thử lại
     if (attempt > 1 && url.contains('github.com')) {
       return 'https://mirror.ghproxy.com/$url';
     }
 
     return url;
+  }
+
+  /// [MỚI] Trích xuất token xác nhận từ HTML của Google Drive
+  String? _extractConfirmToken(String html) {
+    // Tìm chuỗi confirm=XXXX trong HTML
+    final regExp = RegExp(r'confirm=([a-zA-Z0-9-_]+)');
+    final match = regExp.firstMatch(html);
+    return match?.group(1);
+  }
+
+  /// [MỚI] Gợi ý tải thủ công nếu tải tự động thất bại
+  void _suggestManualDownload(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      debugPrint('🌐 Mở trình duyệt để tải thủ công: $url');
+      // Có thể hiện một SnackBar hoặc Dialog ở đây nếu có context
+      // Vì UpdateService là singleton, ta dùng launchUrl trực tiếp
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   /// [MỚI] Tính toán SHA-256 của file

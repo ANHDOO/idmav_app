@@ -57,6 +57,7 @@ dependencies:
   open_filex: ^4.7.0
   crypto: ^3.0.3
   device_info_plus: ^11.1.0
+  url_launcher: ^6.3.1
 
 flutter_icons:
   android: true
