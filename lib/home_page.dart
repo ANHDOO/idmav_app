@@ -14,6 +14,7 @@ import 'group_bit_page.dart';
 import 'scanner_page.dart';
 import 'share_data_page.dart';
 import 'matrix_map_page.dart';
+import 'services/update_service.dart';
 
 // --- CẤU HÌNH BLE ---
 const String SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
@@ -906,6 +907,53 @@ Widget _buildFloatingBottomArea(bool isKeyboardOpen) {
     );
   }
 
+  void _manualCheckForUpdate() async {
+    final updateInfo = UpdateService().updateAvailable.value;
+    if (updateInfo != null) {
+      UpdateService().showUpdateDialog(context, updateInfo);
+      return;
+    }
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Đang kiểm tra cập nhật...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    AppVersionInfo? newUpdate;
+    try {
+      newUpdate = await UpdateService().checkForUpdate();
+    } catch (e) {
+      debugPrint('❌ Lỗi manual check update: $e');
+    } finally {
+      if (mounted) Navigator.of(context).pop();
+    }
+
+    if (newUpdate != null) {
+      if (mounted) UpdateService().showUpdateDialog(context, newUpdate);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ứng dụng đã là phiên bản mới nhất')),
+        );
+      }
+    }
+
+
+  }
+
   Widget _buildModernDrawer() {
     return Drawer(
       child: Column(
@@ -920,6 +968,29 @@ Widget _buildFloatingBottomArea(bool isKeyboardOpen) {
               _buildDrawerItem(Icons.brightness_6, 'Độ sáng', () {Navigator.pop(context); _showBrightnessDialog();}),
               const Divider(indent: 20, endIndent: 20),
               _buildDrawerItem(Icons.folder_copy, 'Lưu trữ & Chia sẻ', () {Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (ctx) => const ShareDataPage()));}),
+              ValueListenableBuilder<AppVersionInfo?>(
+                valueListenable: UpdateService().updateAvailable,
+                builder: (context, updateInfo, _) {
+                  return _buildDrawerItem(
+                    Icons.system_update, 
+                    'Kiểm tra cập nhật', 
+                    () {
+                      Navigator.pop(context);
+                      _manualCheckForUpdate();
+                    },
+                    trailing: updateInfo != null 
+                      ? Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                        )
+                      : null,
+                  );
+                },
+              ),
             ]),
           ),
           const Divider(),
@@ -931,9 +1002,17 @@ Widget _buildFloatingBottomArea(bool isKeyboardOpen) {
     );
   }
 
-  Widget _buildDrawerItem(IconData icon, String title, VoidCallback onTap, {Color? color}) {
+  Widget _buildDrawerItem(IconData icon, String title, VoidCallback onTap, {Color? color, Widget? trailing}) {
     Color itemColor = color ?? primaryDark;
-    return ListTile(leading: Icon(icon, color: itemColor, size: 22), title: Text(title, style: TextStyle(color: itemColor, fontWeight: FontWeight.w500)), onTap: onTap, contentPadding: const EdgeInsets.symmetric(horizontal: 24), horizontalTitleGap: 10, dense: true);
+    return ListTile(
+      leading: Icon(icon, color: itemColor, size: 22), 
+      title: Text(title, style: TextStyle(color: itemColor, fontWeight: FontWeight.w500)), 
+      trailing: trailing,
+      onTap: onTap, 
+      contentPadding: const EdgeInsets.symmetric(horizontal: 24), 
+      horizontalTitleGap: 10, 
+      dense: true,
+    );
   }
 
   @override

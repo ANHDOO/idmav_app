@@ -226,7 +226,7 @@ class MatrixMapPageState extends State<MatrixMapPage> {
     });
 
     // [MỚI] Check update tự động thông qua service
-    UpdateService().initUpdateCheck(context);
+
   }
 
   // --- SETTINGS (CẬP NHẬT ĐỂ LƯU THÊM ID TẤM) ---
@@ -2294,11 +2294,12 @@ class MatrixMapPageState extends State<MatrixMapPage> {
   }
 
   /// [MỚI] Hiển thị dialog import/export dữ liệu thống nhất
-  void _showImportDialog() {
+  void _showImportDialog({int initialTabIndex = 0}) {
     showDialog(
       context: context,
       builder: (ctx) => ImportDataDialog(
         currentBounds: _currentBounds,
+        initialTabIndex: initialTabIndex,
         onBoundsCreated: (bounds, polylines) {
           setState(() {
             _currentBounds = bounds;
@@ -2552,12 +2553,77 @@ class MatrixMapPageState extends State<MatrixMapPage> {
                 ? null 
                 : _showSearchDialog,
           ),
-          // [ĐÃ HỢP NHẤT] Nút Nhập/Xóa khung thống nhất
-          _buildAppBarAction(
-            _currentBounds != null ? Icons.delete_outline : Icons.upload_file,
-            _currentBounds != null ? "Xóa khung" : "Nhập khung sa bàn",
-            _currentBounds != null ? _clearKmz : _showImportDialog,
+          // [MỚI] Menu Khung sa bàn (Nhập/Xuất/Xóa)
+          PopupMenuButton<String>(
+            tooltip: "Khung sa bàn",
+            padding: EdgeInsets.zero,
+            onSelected: (String value) {
+              if (value == 'import') {
+                _showImportDialog(initialTabIndex: 0);
+              } else if (value == 'export') {
+                _showImportDialog(initialTabIndex: 4); // Tab Xuất
+              } else if (value == 'delete') {
+                _clearKmz();
+              }
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    _currentBounds != null ? Icons.crop_free : Icons.upload_file, 
+                    color: _currentBounds != null ? Colors.greenAccent : Colors.white, 
+                    size: 20
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    "Khung sa bàn",
+                    style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'import',
+                child: Row(
+                  children: [
+                    Icon(Icons.upload_file, color: Colors.indigo, size: 20),
+                    SizedBox(width: 10),
+                    Text("Nhập khung mới"),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'export',
+                enabled: _currentBounds != null,
+                child: Row(
+                  children: [
+                    Icon(Icons.download, color: _currentBounds != null ? Colors.green : Colors.grey, size: 20),
+                    SizedBox(width: 10),
+                    Text("Xuất khung hiện tại"),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'delete',
+                enabled: _currentBounds != null,
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_outline, color: _currentBounds != null ? Colors.red : Colors.grey, size: 20),
+                    SizedBox(width: 10),
+                    Text("Xóa khung", style: TextStyle(color: _currentBounds != null ? Colors.red : Colors.grey)),
+                  ],
+                ),
+              ),
+            ],
           ),
+
+
+
+
           const SizedBox(width: 8),
         ],
       ),

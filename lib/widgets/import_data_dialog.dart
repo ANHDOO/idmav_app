@@ -16,12 +16,14 @@ class ImportDataDialog extends StatefulWidget {
   final LatLngBounds? currentBounds;
   final Function(LatLngBounds bounds, List<Polyline> polylines) onBoundsCreated;
   final VoidCallback onClearBounds;
+  final int initialTabIndex; // <--- Thêm tham số này
 
   const ImportDataDialog({
     super.key,
     this.currentBounds,
     required this.onBoundsCreated,
     required this.onClearBounds,
+    this.initialTabIndex = 0, // Mặc định là tab 0
   });
 
   @override
@@ -51,7 +53,11 @@ class _ImportDataDialogState extends State<ImportDataDialog>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(
+      length: 5, 
+      vsync: this,
+      initialIndex: widget.initialTabIndex, // <--- Sử dụng ở đây
+    );
     
     if (widget.currentBounds != null) {
       _northLatCtrl.text = widget.currentBounds!.north.toStringAsFixed(6);

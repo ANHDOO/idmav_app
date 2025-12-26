@@ -6,6 +6,8 @@ import 'group_bit_page.dart';
 import 'matrix_map_page.dart';
 import 'scanner_page.dart';
 import 'widgets/draggable_control_fab.dart';
+import 'services/update_service.dart'; // <--- Thêm import
+import 'package:flutter/foundation.dart'; // <--- Thêm import cho kReleaseMode
 
 // MÀU SẮC CHỦ ĐẠO
 const Color primaryDark = Color(0xFF1A2980);
@@ -34,6 +36,16 @@ class MainNavigationState extends State<MainNavigation> {
   
   // [MỚI] Chế độ full screen khi vào Dò Bít từ Bản đồ
   bool _isFullScreenMode = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // [MỚI] Tự động check update khi vào app (chạy ngầm)
+    // Chỉ check ở bản release hoặc nếu bạn muốn test ở debug thì bỏ kReleaseMode
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      UpdateService().initUpdateCheck(context);
+    });
+  }
 
   // Getter để các trang con có thể gọi sendLedCommand
   BluetoothDevice? get connectedDevice => _homePageKey.currentState?.connectedDevice;

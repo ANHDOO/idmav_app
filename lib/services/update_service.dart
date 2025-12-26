@@ -57,6 +57,10 @@ class UpdateService {
 
   AppVersionInfo? _latestVersion;
   String? _currentVersion;
+  bool _isChecking = false; // <--- Thêm cờ này
+  
+  /// [MỚI] Thông báo có bản cập nhật mới (dùng để hiện chấm đỏ ở menu)
+  final ValueNotifier<AppVersionInfo?> updateAvailable = ValueNotifier<AppVersionInfo?>(null);
   
   /// Lấy version hiện tại của app
   Future<String> getCurrentVersion() async {
@@ -75,6 +79,12 @@ class UpdateService {
   /// Check xem có bản update mới không
   /// Returns: AppVersionInfo nếu có bản mới, null nếu đã mới nhất
   Future<AppVersionInfo?> checkForUpdate() async {
+    if (_isChecking) {
+      debugPrint('⏳ Đang có tiến trình check update khác chạy...');
+      return _latestVersion;
+    }
+    
+    _isChecking = true;
     try {
       debugPrint('🔍 Đang kiểm tra cập nhật...');
       
@@ -92,9 +102,11 @@ class UpdateService {
         
         if (_isNewerVersion(_latestVersion!.version, currentVersion)) {
           debugPrint('✅ Có bản cập nhật mới!');
+          updateAvailable.value = _latestVersion; // Cập nhật notifier
           return _latestVersion;
         } else {
           debugPrint('✅ Đã là bản mới nhất');
+          updateAvailable.value = null;
           return null;
         }
       } else {
@@ -104,6 +116,8 @@ class UpdateService {
     } catch (e) {
       debugPrint('❌ Lỗi kiểm tra cập nhật: $e');
       return null;
+    } finally {
+      _isChecking = false;
     }
   }
 
@@ -307,22 +321,20 @@ del "%~f0"
     }
   }
 
-  /// [MỚI] Khởi tạo quy trình check update (thường gọi ở Home/MainPage)
+  /// [MỚI] Khởi tạo quy trình check update ngầm
   void initUpdateCheck(BuildContext context) {
     Future.delayed(const Duration(seconds: 3), () async {
       try {
-        final updateInfo = await checkForUpdate();
-        if (updateInfo != null && context.mounted) {
-          _showUpdateDialog(context, updateInfo);
-        }
+        await checkForUpdate();
+        // Không tự động hiện dialog ở đây nữa, chỉ check để updateAvailable notifier có data
       } catch (e) {
         debugPrint('⚠️ Lỗi check update tự động: $e');
       }
     });
   }
 
-  /// [MỚI] Hiển thị dialog thông báo có bản cập nhật
-  void _showUpdateDialog(BuildContext context, AppVersionInfo versionInfo) {
+  /// [MỚI] Hiển thị dialog thông báo có bản cập nhật (Public để gọi từ menu)
+  void showUpdateDialog(BuildContext context, AppVersionInfo versionInfo) {
     showDialog(
       context: context,
       barrierDismissible: !versionInfo.required,
