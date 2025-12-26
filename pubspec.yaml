@@ -55,6 +55,7 @@ dependencies:
   intl: ^0.19.0               # Format ngày tháng
   package_info_plus: ^9.0.0
   open_filex: ^4.7.0
+  crypto: ^3.0.3
 
 flutter_icons:
   android: true

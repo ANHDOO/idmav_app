@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:crypto/crypto.dart';
 
 /// Model chứa thông tin version
 class AppVersionInfo {
@@ -19,6 +20,7 @@ class AppVersionInfo {
   final String releaseDate;
   final String releaseNotes;
   final Map<String, String> downloadUrl;
+  final Map<String, String> hashes; // SHA-256 hashes
   final bool required;
   final String minVersion;
 
@@ -28,6 +30,7 @@ class AppVersionInfo {
     required this.releaseDate,
     required this.releaseNotes,
     required this.downloadUrl,
+    this.hashes = const {},
     required this.required,
     required this.minVersion,
   });
@@ -39,6 +42,7 @@ class AppVersionInfo {
       releaseDate: json['releaseDate'] ?? '',
       releaseNotes: json['releaseNotes'] ?? '',
       downloadUrl: Map<String, String>.from(json['downloadUrl'] ?? {}),
+      hashes: Map<String, String>.from(json['hashes'] ?? {}),
       required: json['required'] ?? false,
       minVersion: json['minVersion'] ?? '1.0.0',
     );
@@ -198,11 +202,18 @@ class UpdateService {
           await file.delete();
         }
         
+        // Sử dụng Mirror Proxy nếu lần đầu thất bại hoặc chậm
+        String requestUrl = downloadUrl;
+        if (attempt > 1 && requestUrl.contains('github.com')) {
+          requestUrl = 'https://mirror.ghproxy.com/$requestUrl';
+          debugPrint('🚀 Sử dụng Mirror Proxy: $requestUrl');
+        }
+
         // Tạo HttpClient với timeout dài
         final httpClient = HttpClient();
         httpClient.connectionTimeout = const Duration(seconds: 30);
-        
-        final request = await httpClient.getUrl(Uri.parse(downloadUrl));
+
+        final request = await httpClient.getUrl(Uri.parse(requestUrl));
         final response = await request.close();
         
         if (response.statusCode != 200) {
@@ -236,7 +247,34 @@ class UpdateService {
         
         debugPrint('✅ Download hoàn tất: $filePath (${(received / 1024 / 1024).toStringAsFixed(1)} MB)');
         
-        // Verify file size
+        // 1. Verify Integrity (SHA-256)
+        String? platformKey;
+        if (Platform.isWindows) platformKey = 'windows';
+        if (Platform.isAndroid) {
+          final arch = Platform.version.toLowerCase();
+          if (arch.contains('arm64') || arch.contains('aarch64')) platformKey = 'android_arm64';
+          else if (arch.contains('arm')) platformKey = 'android_armv7';
+          platformKey ??= 'android';
+        }
+
+        if (platformKey != null && versionInfo.hashes.containsKey(platformKey)) {
+          debugPrint('🛡️ Đang kiểm tra tính toàn vẹn (SHA-256)...');
+          final expectedHash = versionInfo.hashes[platformKey];
+          final actualHash = await _calculateFileHash(filePath);
+          if (actualHash != expectedHash) {
+            debugPrint('❌ Lỗi toàn vẹn: Hash không khớp!');
+            debugPrint('   Mong đợi: $expectedHash');
+            debugPrint('   Thực tế:  $actualHash');
+            if (attempt < 3) {
+              debugPrint('🔄 Thử lại lần khác...');
+              continue;
+            }
+            return false;
+          }
+          debugPrint('✅ Kiểm tra toàn vẹn thành công!');
+        }
+
+        // 2. Verify file size
         final downloadedFile = File(filePath);
         final fileSize = await downloadedFile.length();
         if (fileSize < 1000000) { // < 1MB = lỗi
@@ -513,5 +551,12 @@ del "%~f0"
         },
       ),
     );
+  }
+
+  /// [MỚI] Tính toán SHA-256 của file
+  Future<String> _calculateFileHash(String filePath) async {
+    final file = File(filePath);
+    final bytes = await file.readAsBytes();
+    return sha256.convert(bytes).toString();
   }
 }
