@@ -151,7 +151,24 @@ class UpdateService {
       downloadUrl = versionInfo.downloadUrl['windows'];
       fileName = 'idmav_app_update.zip';
     } else if (Platform.isAndroid) {
+      // Thử lấy URL theo kiến trúc chip (để giảm dung lượng tải)
+      // Mặc định là 'android', nếu có 'android_arm64' hoặc 'android_armv7' thì dùng
       downloadUrl = versionInfo.downloadUrl['android'];
+      
+      try {
+        // Đọc kiến trúc chip (giản lược)
+        final String arch = Platform.version.toLowerCase();
+        if (arch.contains('arm64') || arch.contains('aarch64')) {
+          downloadUrl = versionInfo.downloadUrl['android_arm64'] ?? downloadUrl;
+          debugPrint('📱 Phát hiện kiến trúc ARM64');
+        } else if (arch.contains('arm')) {
+          downloadUrl = versionInfo.downloadUrl['android_armv7'] ?? downloadUrl;
+          debugPrint('📱 Phát hiện kiến trúc ARMV7');
+        }
+      } catch (e) {
+        debugPrint('⚠️ Không xác định được kiến trúc chip: $e');
+      }
+      
       fileName = 'idmav_app_update.apk';
     } else {
       debugPrint('⚠️ Platform không được hỗ trợ');

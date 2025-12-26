@@ -88,10 +88,11 @@ flutter:
   assets:
     - assets/QDNDVN.ico
     - assets/TP.png
-    - assets/boundaries/
+    - assets/boundaries/vn_boundaries.json
+    - assets/boundaries/vn_boundaries_2025.json
     - assets/vietnam_map.mbtiles
     - assets/vietnam_vietmap.mbtiles
-    - assets/roads/
+    - assets/roads/vn_roads.json
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
