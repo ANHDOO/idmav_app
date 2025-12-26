@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'services/update_service.dart';
 
 // Màu chủ đạo (Đồng bộ với Home & Login)
 const Color primaryDark = Color(0xFF1A2980);
@@ -127,9 +128,9 @@ class AboutPage extends StatelessWidget {
               ),
               child: Column(
                 children: [
-                  _buildInfoRow(Icons.verified, 'Phiên bản', '1.1 (Stable)'),
+                  _buildInfoRow(Icons.verified, 'Phiên bản', '1.1.5'),
                   const Divider(height: 1, indent: 60),
-                  _buildInfoRow(Icons.calendar_today, 'Ngày phát hành', '03/10/2025'),
+                  _buildInfoRow(Icons.calendar_today, 'Ngày cập nhật', '26/12/2024'),
                   const Divider(height: 1, indent: 60),
                   _buildInfoRow(Icons.code, 'Người phát triển', 'Anh Đô', isHighlight: true),
                 ],

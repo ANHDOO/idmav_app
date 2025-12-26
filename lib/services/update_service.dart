@@ -163,6 +163,9 @@ class UpdateService {
       return false;
     }
     
+    debugPrint('🔧 Platform: ${Platform.operatingSystem}');
+    debugPrint('🔧 Download URL: $downloadUrl');
+    
     // Retry 3 lần
     for (int attempt = 1; attempt <= 3; attempt++) {
       debugPrint('📥 Bắt đầu download (lần $attempt): $downloadUrl');
@@ -303,10 +306,23 @@ del "%~f0"
   /// Cài đặt trên Android
   Future<bool> _installAndroid(String apkPath) async {
     try {
-      debugPrint('📱 Mở cài đặt APK...');
+      debugPrint('📱 Mở cài đặt APK: $apkPath');
+      
+      // Kiểm tra file tồn tại
+      final apkFile = File(apkPath);
+      final exists = await apkFile.exists();
+      final size = exists ? await apkFile.length() : 0;
+      debugPrint('📱 File exists: $exists, Size: ${(size / 1024 / 1024).toStringAsFixed(2)} MB');
+      
+      if (!exists || size < 1000000) {
+        debugPrint('❌ File APK không hợp lệ');
+        return false;
+      }
       
       // Mở file APK để cài đặt
+      debugPrint('📱 Gọi OpenFilex.open...');
       final result = await OpenFilex.open(apkPath);
+      debugPrint('📱 OpenFilex result: type=${result.type}, message=${result.message}');
       
       if (result.type == ResultType.done) {
         debugPrint('✅ Đã mở installer');
@@ -315,8 +331,9 @@ del "%~f0"
         debugPrint('⚠️ Không thể mở APK: ${result.message}');
         return false;
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('❌ Lỗi cài đặt Android: $e');
+      debugPrint('❌ Stack trace: $stackTrace');
       return false;
     }
   }

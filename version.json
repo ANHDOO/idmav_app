@@ -1,11 +1,11 @@
 {
-    "version": "1.1.4",
-    "build": 5,
+    "version": "1.1.5",
+    "build": 6,
     "releaseDate": "2025-12-26",
-    "releaseNotes": "• Phiên bản 1.1.4\n• Tách riêng các hành động Khung sa bàn (Nhập/Xuất/Xóa) vào menu Popup\n• Sửa lỗi treo khi kiểm tra cập nhật thủ công\n• Cải tiến độ ổn định của Navigator khi đóng Drawer",
+    "releaseNotes": "• Phiên bản 1.1.5\n• Xuất khung KMZ: Mở hộp thoại chia sẻ để người dùng tự chọn nơi lưu\n• Thêm log chi tiết để debug lỗi cập nhật trên Android\n• Hiển thị phiên bản ở cuối menu (in đậm nghiêng, căn phải)",
     "downloadUrl": {
-        "windows": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.4/idmav_app_windows.zip",
-        "android": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.4/app-release.apk"
+        "windows": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.5/idmav_app_windows.zip",
+        "android": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.5/app-release.apk"
     },
     "required": false,
     "minVersion": "1.0.0"

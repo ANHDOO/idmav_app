@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:xml/xml.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:share_plus/share_plus.dart';
 
 /// Dialog thống nhất để import/export dữ liệu tọa độ
 /// Hỗ trợ: KMZ, nhập tọa độ thủ công, dán text, xuất KMZ
@@ -374,9 +375,9 @@ class _ImportDataDialogState extends State<ImportDataDialog>
   </Document>
 </kml>''';
 
-      final directory = await getApplicationDocumentsDirectory();
+      final directory = await getTemporaryDirectory();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final kmzPath = '${directory.path}/export_$timestamp.kmz';
+      final kmzPath = '${directory.path}/export_khung_$timestamp.kmz';
       
       final archive = Archive();
       archive.addFile(ArchiveFile('doc.kml', kml.length, kml.codeUnits));
@@ -385,9 +386,13 @@ class _ImportDataDialogState extends State<ImportDataDialog>
 
       Navigator.of(context).pop();
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('✓ Đã xuất: $kmzPath')),
+      // Mở hộp thoại chia sẻ để người dùng chọn nơi lưu/gửi
+      await Share.shareXFiles(
+        [XFile(kmzPath)],
+        text: 'Khung tọa độ sa bàn',
+        subject: 'export_khung.kmz',
       );
+      
     } catch (e) {
       setState(() => _errorMessage = 'Lỗi xuất KMZ: $e');
     } finally {

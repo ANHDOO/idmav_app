@@ -960,7 +960,7 @@ Widget _buildFloatingBottomArea(bool isKeyboardOpen) {
         children: [
           Container(
             width: double.infinity, padding: const EdgeInsets.only(top: 50, bottom: 20, left: 20), decoration: const BoxDecoration(gradient: LinearGradient(colors: [primaryDark, primaryLight], begin: Alignment.topLeft, end: Alignment.bottomRight)),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Container(padding: const EdgeInsets.all(3), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)), child: const CircleAvatar(radius: 30, backgroundColor: Colors.white, child: Icon(Icons.person, size: 40, color: primaryDark))), const SizedBox(height: 12), const Text('iDMAV 5.0', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)), const Text('Administrator', style: TextStyle(color: Colors.white70, fontSize: 14))]),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Container(padding: const EdgeInsets.all(3), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)), child: const CircleAvatar(radius: 30, backgroundColor: Colors.white, child: Icon(Icons.person, size: 40, color: primaryDark))), const SizedBox(height: 12), const Text('iDMAV 1.1.5', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)), const Text('Administrator', style: TextStyle(color: Colors.white70, fontSize: 14))]),
           ),
           Expanded(
             child: ListView(padding: const EdgeInsets.symmetric(vertical: 10), children: [
@@ -996,7 +996,18 @@ Widget _buildFloatingBottomArea(bool isKeyboardOpen) {
           const Divider(),
           _buildDrawerItem(Icons.info_outline, 'Thông tin phần mềm', () {Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (ctx) => const AboutPage()));}, color: Colors.grey[700]!),
           _buildDrawerItem(Icons.logout, 'Đăng xuất', () => _logout(context), color: Colors.red),
-          const SizedBox(height: 20),
+
+
+          const Padding(
+            padding: EdgeInsets.only(right: 16, top: 10, bottom: 20),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+              'Phiên bản 1.1.5',
+              style: TextStyle(color: Colors.grey, fontSize: 13, fontWeight: FontWeight.bold, fontStyle: FontStyle.italic),
+              ),
+            ),
+          ),
         ],
       ),
     );
