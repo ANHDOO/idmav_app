@@ -56,9 +56,10 @@ class UpdateService {
   factory UpdateService() => _instance;
   UpdateService._internal();
 
-  // URL file version.json trên GitHub (raw content)
+  // URL file version.json (Chọn 1 trong 2 nguồn)
   static const String _versionUrl = 
-    'https://raw.githubusercontent.com/ANHDOO/idmav_app/main/version.json';
+    'https://idmav-app.web.app/version.json'; // Link Firebase Hosting
+    // 'https://raw.githubusercontent.com/ANHDOO/idmav_app/main/version.json';
 
   AppVersionInfo? _latestVersion;
   String? _currentVersion;
