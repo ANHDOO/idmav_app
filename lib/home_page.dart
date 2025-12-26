@@ -6,6 +6,7 @@ import 'package:app_settings/app_settings.dart';
 import 'dart:async';
 import 'dart:io'; // Cần thiết để kiểm tra Platform.isAndroid
 import 'package:flutter/services.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 // Import các page khác của bạn (Giữ nguyên)
 import 'about_page.dart';
@@ -85,44 +86,49 @@ class HomePageState extends State<HomePage> {
     return true;
   }
 
-  // --- CẤP QUYỀN (ĐÃ TỐI ƯU HÓA) ---
+  // --- CẤP QUYỀN (ĐÃ TỐI ƯU HÓA CHO ANDROID 12+) ---
   Future<bool> _requestBluetoothPermission() async {
-    // Gom tất cả các quyền cần thiết vào một danh sách để hỏi 1 lần
-    List<Permission> permissions = [];
-
     if (Platform.isAndroid) {
-      // Android 12 trở lên (SDK 31+)
-      permissions.add(Permission.bluetoothScan);
-      permissions.add(Permission.bluetoothConnect);
-      // Android 11 trở xuống cần Location
-      permissions.add(Permission.location); 
+      final deviceInfo = DeviceInfoPlugin();
+      final androidInfo = await deviceInfo.androidInfo;
+      final sdkInt = androidInfo.version.sdkInt;
+
+      // 1. Kiểm tra xem đã có quyền chưa trước khi hỏi
+      bool scanStatus = await Permission.bluetoothScan.isGranted;
+      bool connectStatus = await Permission.bluetoothConnect.isGranted;
+      bool locationStatus = await Permission.location.isGranted;
+
+      // Nếu đã có đủ quyền Bluetooth (Android 12+) hoặc Location (Android cũ) thì trả về luôn
+      if (sdkInt >= 31) {
+        if (scanStatus && connectStatus) return true;
+      } else {
+        if (locationStatus) return true;
+      }
+
+      // 2. Nếu chưa có, mới gom lại hỏi
+      List<Permission> permissions = [];
+      if (sdkInt >= 31) {
+        permissions.add(Permission.bluetoothScan);
+        permissions.add(Permission.bluetoothConnect);
+      } else {
+        permissions.add(Permission.location);
+      }
+
+      if (permissions.isEmpty) return true;
+
+      Map<Permission, PermissionStatus> statuses = await permissions.request();
+      
+      if (sdkInt >= 31) {
+        return (statuses[Permission.bluetoothScan]?.isGranted ?? false) &&
+               (statuses[Permission.bluetoothConnect]?.isGranted ?? false);
+      } else {
+        return statuses[Permission.location]?.isGranted ?? false;
+      }
     } else {
       // iOS
-      permissions.add(Permission.bluetooth);
+      if (await Permission.bluetooth.isGranted) return true;
+      return (await Permission.bluetooth.request()).isGranted;
     }
-
-    // Yêu cầu cấp quyền
-    Map<Permission, PermissionStatus> statuses = await permissions.request();
-
-    // Kiểm tra kết quả
-    // Lưu ý: Trên Android 12, Location có thể bị Denied nhưng Scan/Connect Granted thì vẫn chạy được.
-    // Nên ta kiểm tra linh hoạt hơn.
-    
-    bool isScanGranted = statuses[Permission.bluetoothScan]?.isGranted ?? true; // Nếu null (máy cũ) coi như true
-    bool isConnectGranted = statuses[Permission.bluetoothConnect]?.isGranted ?? true;
-    bool isLocationGranted = statuses[Permission.location]?.isGranted ?? true;
-
-    // Logic: Nếu là Android mới thì cần Scan & Connect. Nếu Android cũ thì cần Location.
-    if (await Permission.bluetoothScan.status.isGranted || await Permission.location.status.isGranted) {
-       return true;
-    }
-    
-    // Nếu tất cả đều bị từ chối
-    if (!isScanGranted && !isLocationGranted) {
-      return false;
-    }
-
-    return true;
   }
 
   void _logout(BuildContext context) async {
@@ -212,11 +218,16 @@ class HomePageState extends State<HomePage> {
 
     try {
       setState(() { scanResults.clear(); isScanning = true; });
-      // Bắt đầu quét
+      
+      // Bắt đầu quét - Tối ưu cho Android 12+
+      final deviceInfo = DeviceInfoPlugin();
+      final androidInfo = Platform.isAndroid ? await deviceInfo.androidInfo : null;
+      final sdkInt = androidInfo?.version.sdkInt ?? 0;
+
       await FlutterBluePlus.startScan(
         timeout: const Duration(seconds: 5), 
         withKeywords: const ['ESP'], // Chỉ quét thiết bị có tên chứa ESP
-        androidUsesFineLocation: true, // Cố gắng dùng chính xác nhất có thể
+        androidUsesFineLocation: sdkInt < 31, // Android 12+ không cần Location cho BLE
       );
       
       FlutterBluePlus.scanResults.listen((results) {

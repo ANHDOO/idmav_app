@@ -202,12 +202,9 @@ class UpdateService {
           await file.delete();
         }
         
-        // Sử dụng Mirror Proxy nếu lần đầu thất bại hoặc chậm
-        String requestUrl = downloadUrl;
-        if (attempt > 1 && requestUrl.contains('github.com')) {
-          requestUrl = 'https://mirror.ghproxy.com/$requestUrl';
-          debugPrint('🚀 Sử dụng Mirror Proxy: $requestUrl');
-        }
+        // Tối ưu hóa URL (Google Drive, Mirror Proxy, v.v.)
+        String requestUrl = _processUrl(downloadUrl, attempt);
+        debugPrint('🌐 Request URL: $requestUrl');
 
         // Tạo HttpClient với timeout dài
         final httpClient = HttpClient();
@@ -551,6 +548,27 @@ del "%~f0"
         },
       ),
     );
+  }
+
+  /// [MỚI] Tối ưu hóa URL tải xuống
+  String _processUrl(String url, int attempt) {
+    // 1. Xử lý Google Drive (Chuyển link view sang link download trực tiếp)
+    if (url.contains('drive.google.com')) {
+      final regExp = RegExp(r'\/d\/([a-zA-Z0-9-_]+)');
+      final match = regExp.firstMatch(url);
+      if (match != null) {
+        final fileId = match.group(1);
+        // Link download trực tiếp (Lưu ý: File > 100MB có thể bị chặn bởi trang cảnh báo virus)
+        return 'https://drive.google.com/uc?export=download&id=$fileId';
+      }
+    }
+
+    // 2. Sử dụng Mirror Proxy cho GitHub nếu tải chậm/thử lại
+    if (attempt > 1 && url.contains('github.com')) {
+      return 'https://mirror.ghproxy.com/$url';
+    }
+
+    return url;
   }
 
   /// [MỚI] Tính toán SHA-256 của file
