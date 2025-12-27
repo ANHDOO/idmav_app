@@ -5,8 +5,30 @@ import 'services/update_service.dart';
 const Color primaryDark = Color(0xFF1A2980);
 const Color primaryLight = Color(0xFF26D0CE);
 
-class AboutPage extends StatelessWidget {
+class AboutPage extends StatefulWidget {
   const AboutPage({Key? key}) : super(key: key);
+
+  @override
+  State<AboutPage> createState() => _AboutPageState();
+}
+
+class _AboutPageState extends State<AboutPage> {
+  String _appVersion = '1.1.6';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    final version = await UpdateService().getCurrentVersion();
+    if (mounted) {
+      setState(() {
+        _appVersion = version;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -128,9 +150,9 @@ class AboutPage extends StatelessWidget {
               ),
               child: Column(
                 children: [
-                  _buildInfoRow(Icons.verified, 'Phiên bản', '1.1.5'),
+                  _buildInfoRow(Icons.verified, 'Phiên bản', _appVersion),
                   const Divider(height: 1, indent: 60),
-                  _buildInfoRow(Icons.calendar_today, 'Ngày cập nhật', '26/12/2024'),
+                  _buildInfoRow(Icons.calendar_today, 'Ngày cập nhật', '27/12/2024'),
                   const Divider(height: 1, indent: 60),
                   _buildInfoRow(Icons.code, 'Người phát triển', 'Anh Đô', isHighlight: true),
                 ],

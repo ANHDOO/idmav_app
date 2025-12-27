@@ -11,7 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
-import 'package:crypto/crypto.dart';
+
 
 /// Model chứa thông tin version
 class AppVersionInfo {
@@ -193,7 +193,13 @@ class UpdateService {
       
       try {
         // Lấy thư mục download
-        final directory = await getTemporaryDirectory();
+        Directory? directory;
+        if (Platform.isAndroid) {
+          // Trên Android, dùng External Storage để trình cài đặt hệ thống có quyền truy cập
+          directory = await getExternalStorageDirectory();
+        } 
+        directory ??= await getTemporaryDirectory();
+        
         final filePath = '${directory.path}/$fileName';
         final file = File(filePath);
         
@@ -560,10 +566,5 @@ del "%~f0"
     return url;
   }
 
-  /// [MỚI] Tính toán SHA-256 của file
-  Future<String> _calculateFileHash(String filePath) async {
-    final file = File(filePath);
-    final bytes = await file.readAsBytes();
-    return sha256.convert(bytes).toString();
-  }
+
 }
