@@ -43,3 +43,20 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Node & Python
+node_modules/
+package-lock.json
+.venv/
+data/
+
+# Windows artifacts
+*.dll
+*.exe
+*.pdb
+
+# Firebase
+.firebase/
+.firebaserc
+package.json
+

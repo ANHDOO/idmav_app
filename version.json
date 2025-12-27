@@ -1,13 +1,13 @@
 {
-    "version": "1.1.6",
-    "build": 7,
+    "version": "1.1.7",
+    "build": 8,
     "releaseDate": "2025-12-27",
-    "releaseNotes": "v1.1.6: Cải thiện UX BLE, rút gọn quy trình OCR vẽ khung, ưu tiên bản đồ VietMap và giữ khung viền khi tắt lưới. Bản này đã bỏ qua bước kiểm tra Hash để tăng tốc độ cập nhật.",
+    "releaseNotes": "v1.1.7: Mặc định bản đồ VietMap, sửa lỗi hiển thị thông báo Bluetooth, tối ưu tốc độ cập nhật.",
     "downloadUrl": {
-        "android": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.6/app-arm64-v8a-release.apk",
-        "android_arm64": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.6/app-arm64-v8a-release.apk",
-        "android_armv7": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.6/app-armeabi-v7a-release.apk",
-        "android_x64": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.6/app-x86_64-release.apk"
+        "android": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.7/app-arm64-v8a-release.apk",
+        "android_arm64": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.7/app-arm64-v8a-release.apk",
+        "android_armv7": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.7/app-armeabi-v7a-release.apk",
+        "android_x64": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.7/app-x86_64-release.apk"
     },
     "required": false,
     "minVersion": "1.1.0"

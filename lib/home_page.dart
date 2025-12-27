@@ -67,7 +67,9 @@ class HomePageState extends State<HomePage> {
   String? _lastProcessedRx;
   DateTime? _lastProcessedTime;
 
-  String _appVersion = '1.1.6'; // Giá trị dự phòng
+  String _appVersion = '1.1.7'; // Giá trị dự phòng
+  bool _showNoDeviceMessage = false;
+  Timer? _noDeviceMessageTimer;
 
   @override
   void initState() {
@@ -234,7 +236,12 @@ class HomePageState extends State<HomePage> {
     }
 
     try {
-      setState(() { scanResults.clear(); isScanning = true; });
+      setState(() { 
+      scanResults.clear(); 
+      isScanning = true; 
+      _showNoDeviceMessage = false;
+      _noDeviceMessageTimer?.cancel();
+    });
       
       // Bắt đầu quét - Tối ưu cho Android 12+
       final deviceInfo = DeviceInfoPlugin();
@@ -253,10 +260,21 @@ class HomePageState extends State<HomePage> {
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lỗi quét: $e')));
     } finally {
-      // Tự tắt trạng thái loading sau timeout
-      Future.delayed(const Duration(seconds: 5), () {
-        if (mounted) setState(() => isScanning = false);
-      });
+      if (mounted) {
+        setState(() {
+          isScanning = false;
+          if (scanResults.isEmpty) {
+            _showNoDeviceMessage = true;
+            _noDeviceMessageTimer?.cancel();
+            _noDeviceMessageTimer = Timer(const Duration(seconds: 5), () {
+              if (mounted) setState(() => _showNoDeviceMessage = false);
+            });
+          }
+        });
+      }
+
+
+
     }
   }
 
@@ -653,7 +671,7 @@ Widget _buildDeviceList() {
 
     if (scanResults.isEmpty) {
       // [v1.1.6] Hiển thị thông báo khi đã quét xong nhưng không có thiết bị
-      if (!isScanning) {
+      if (!isScanning && _showNoDeviceMessage) {
         return Container(
           padding: const EdgeInsets.all(16),
           margin: const EdgeInsets.only(bottom: 10),

@@ -241,7 +241,7 @@ class MatrixMapPageState extends State<MatrixMapPage> {
       _selectedTileSize = prefs.getInt('map_tile_size') ?? 50;
       
       // Load Map Type (Migrate từ _isSatelliteMode cũ)
-      int mapTypeIndex = prefs.getInt('map_type_index') ?? 0;
+      int mapTypeIndex = prefs.getInt('map_type_index') ?? MapType.vietmap.index;
       if (prefs.containsKey('map_satellite_mode')) {
         bool oldSatMode = prefs.getBool('map_satellite_mode') ?? false;
         if (oldSatMode) mapTypeIndex = MapType.satellite.index;
