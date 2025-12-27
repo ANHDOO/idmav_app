@@ -1,0 +1,18 @@
+{
+    "version": "1.1.5",
+    "build": 6,
+    "releaseDate": "2025-12-26",
+    "releaseNotes": "• Phiên bản 1.1.5 (Optimized)\n• Đảm bảo tính toàn vẹn của file (SHA-256 Verification)\n• Tự động dùng Mirror Proxy nếu tải chậm/lỗi\n• Giảm dung lượng APK (Split APK per ABI)\n• Xuất khung KMZ: Mở hộp thoại chia sẻ",
+    "downloadUrl": {
+        "windows": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.5/idmav_app_windows.zip",
+        "android": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.5/app-release.apk",
+        "android_arm64": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.5/app-arm64-v8a-release.apk",
+        "android_armv7": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.5/app-armeabi-v7a-release.apk"
+    },
+    "hashes": {
+        "android_arm64": "e5a926ed9d6a20616d8a988d247253725521751b13b3ab9de75e729415658278",
+        "android_armv7": "4ff7b70bff1fdd266efec7d3363fce50e5552f58352992c6462c840209d1296d"
+    },
+    "required": false,
+    "minVersion": "1.0.0"
+}

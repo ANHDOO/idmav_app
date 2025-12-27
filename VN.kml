@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Vietnam 4 Extreme Points</name>
+    <description>Bản đồ khung giới hạn 4 cực Việt Nam: Đông, Tây, Nam, Bắc</description>
+    
+    <LookAt>
+      <longitude>105.8</longitude>
+      <latitude>16.0</latitude>
+      <altitude>0</altitude>
+      <heading>5.0</heading>     <tilt>10</tilt>            <range>2300000</range>     <altitudeMode>relativeToGround</altitudeMode>
+    </LookAt>
+
+    <Folder>
+      <name>4 Điểm Cực Lãnh Thổ</name>
+      
+      <Placemark>
+        <name>Cực Bắc (Lũng Cú)</name>
+        <description>Xã Lũng Cú, Đồng Văn, Hà Giang. Tọa độ thực tế gần sông Nho Quế.</description>
+        <Point>
+          <coordinates>105.323,23.383,0</coordinates>
+        </Point>
+      </Placemark>
+      
+      <Placemark>
+        <name>Cực Nam (Đất Mũi)</name>
+        <description>Xã Đất Mũi, Ngọc Hiển, Cà Mau.</description>
+        <Point>
+          <coordinates>104.745,8.562,0</coordinates>
+        </Point>
+      </Placemark>
+
+      <Placemark>
+        <name>Cực Tây (A Pa Chải)</name>
+        <description>Mốc ngã 3 biên giới (Việt - Lào - Trung). Xã Sín Thầu, Mường Nhé, Điện Biên.</description>
+        <Point>
+          <coordinates>102.144,22.401,0</coordinates>
+        </Point>
+      </Placemark>
+
+      <Placemark>
+        <name>Cực Đông (Mũi Đôi)</name>
+        <description>Bán đảo Hòn Gốm, Vạn Ninh, Khánh Hòa. Nơi đón ánh mặt trời đầu tiên trên đất liền.</description>
+        <Point>
+          <coordinates>109.469,12.648,0</coordinates>
+        </Point>
+      </Placemark>
+    </Folder>
+
+  </Document>
+</kml>
