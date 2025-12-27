@@ -244,32 +244,8 @@ class UpdateService {
         
         debugPrint('✅ Download hoàn tất: $filePath (${(received / 1024 / 1024).toStringAsFixed(1)} MB)');
         
-        // 1. Verify Integrity (SHA-256)
-        String? platformKey;
-        if (Platform.isWindows) platformKey = 'windows';
-        if (Platform.isAndroid) {
-          final arch = Platform.version.toLowerCase();
-          if (arch.contains('arm64') || arch.contains('aarch64')) platformKey = 'android_arm64';
-          else if (arch.contains('arm')) platformKey = 'android_armv7';
-          platformKey ??= 'android';
-        }
-
-        if (platformKey != null && versionInfo.hashes.containsKey(platformKey)) {
-          debugPrint('🛡️ Đang kiểm tra tính toàn vẹn (SHA-256)...');
-          final expectedHash = versionInfo.hashes[platformKey];
-          final actualHash = await _calculateFileHash(filePath);
-          if (actualHash?.toLowerCase() != expectedHash?.toLowerCase()) {
-            debugPrint('❌ Lỗi toàn vẹn: Hash không khớp!');
-            debugPrint('   Mong đợi: $expectedHash');
-            debugPrint('   Thực tế:  $actualHash');
-            if (attempt < 3) {
-              debugPrint('🔄 Thử lại lần khác...');
-              continue;
-            }
-            return false;
-          }
-          debugPrint('✅ Kiểm tra toàn vẹn thành công!');
-        }
+        // [v1.1.6] Bỏ qua kiểm tra toàn vẹn để tăng tốc độ tối đa
+        debugPrint('� Bỏ qua kiểm tra toàn vẹn, tiến hành cài đặt ngay...');
 
         // 2. Verify file size
         final downloadedFile = File(filePath);
