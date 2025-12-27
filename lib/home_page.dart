@@ -634,7 +634,38 @@ Widget _buildDeviceList() {
     if (connectedDevice != null) return const SizedBox.shrink();
     // -----------------------------------------------------
 
-    if (scanResults.isEmpty) return const SizedBox.shrink();
+    if (scanResults.isEmpty) {
+      // [v1.1.6] Hiển thị thông báo khi đã quét xong nhưng không có thiết bị
+      if (!isScanning) {
+        return Container(
+          padding: const EdgeInsets.all(16),
+          margin: const EdgeInsets.only(bottom: 10),
+          decoration: BoxDecoration(
+            color: Colors.orange.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.orange.shade200),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.bluetooth_searching, color: Colors.orange[700], size: 24),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Không tìm thấy thiết bị ESP',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    Text('Đảm bảo thiết bị đã bật và gần điện thoại',
+                        style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+      return const SizedBox.shrink();
+    }
     
     // Phần hiển thị danh sách giữ nguyên, nhưng bọc trong Flexible để không bị lỗi layout nếu danh sách quá dài
     return Container(

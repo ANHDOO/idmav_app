@@ -128,7 +128,7 @@ class MatrixMapPageState extends State<MatrixMapPage> {
   final MapController _mapController = MapController();
   
   // State
-  MapType _currentMapType = MapType.google; // Mặc định dùng Google cho sạch
+  MapType _currentMapType = MapType.vietmap; // [v1.1.6] Mặc định dùng VietMap
   double _renderWidth = 600;
   double _renderHeight = 700;
   int _selectedTileSize = 50;
@@ -286,8 +286,8 @@ class MatrixMapPageState extends State<MatrixMapPage> {
               LatLng(maxLat, minLng),
               LatLng(minLat, minLng),
             ],
-            color: (_currentMapType == MapType.satellite) ? Colors.cyanAccent : Colors.black,
-            strokeWidth: 2,
+            color: Colors.red,  // [v1.1.6] Đỏ nổi bật để dễ thấy khi tắt lưới
+            strokeWidth: 3,
             isDotted: true,
           ),
         ];
@@ -2359,8 +2359,8 @@ class MatrixMapPageState extends State<MatrixMapPage> {
           lines.add(
             Polyline(
               points: segmentPoints,
-              color: (_currentMapType == MapType.satellite) ? Colors.cyanAccent : Colors.black,
-              strokeWidth: 2,
+              color: Colors.red,  // [v1.1.6] Đỏ nổi bật
+              strokeWidth: 3,
               isDotted: true,
             ),
           );
@@ -2518,14 +2518,19 @@ class MatrixMapPageState extends State<MatrixMapPage> {
             itemBuilder: (context) {
               bool isOnline = OfflineMapService().isOnline;
               return [
+                // [v1.1.6] VietMap lên đầu, thứ tự: VietMap → Google → OSM → Vệ tinh
+                PopupMenuItem(
+                  value: MapType.vietmap,
+                  enabled: isOnline || OfflineMapService().hasVietMapOffline,
+                  child: Text(isOnline 
+                      ? "VietMap (Khuyên dùng)" 
+                      : (OfflineMapService().hasVietMapOffline 
+                          ? "VietMap (Offline)" 
+                          : "VietMap (Cần mạng)")),
+                ),
                 const PopupMenuItem(
                   value: MapType.google,
-                  child: Text("Google Maps (Khuyên dùng)"),
-                ),
-                PopupMenuItem(
-                  value: MapType.satellite,
-                  enabled: isOnline,
-                  child: Text(isOnline ? "Vệ tinh (ArcGIS)" : "Vệ tinh (Cần mạng)"),
+                  child: Text("Google Maps"),
                 ),
                 PopupMenuItem(
                   value: MapType.osm,
@@ -2533,14 +2538,9 @@ class MatrixMapPageState extends State<MatrixMapPage> {
                   child: Text(isOnline ? "OpenStreetMap" : "OpenStreetMap (Cần mạng)"),
                 ),
                 PopupMenuItem(
-                  value: MapType.vietmap,
-                  // VietMap enabled khi online HOẶC có offline tiles
-                  enabled: isOnline || OfflineMapService().hasVietMapOffline,
-                  child: Text(isOnline 
-                      ? "VietMap" 
-                      : (OfflineMapService().hasVietMapOffline 
-                          ? "VietMap (Offline)" 
-                          : "VietMap (Cần mạng)")),
+                  value: MapType.satellite,
+                  enabled: isOnline,
+                  child: Text(isOnline ? "Vệ tinh (ArcGIS)" : "Vệ tinh (Cần mạng)"),
                 ),
               ];
             },

@@ -342,6 +342,97 @@ class _ImportDataDialogState extends State<ImportDataDialog>
     }
   }
 
+  /// [v1.1.6] Phân tích OCR và vẽ khung TRỰC TIẾP (không cần chuyển tab)
+  void _analyzeAndDrawFrameDirectly() {
+    if (_ocrResultText == null || _ocrResultText!.isEmpty) {
+      setState(() => _errorMessage = 'Chưa có kết quả OCR để phân tích');
+      return;
+    }
+    
+    setState(() => _errorMessage = null);
+    String text = _ocrResultText!;
+    
+    double? north, south, east, west;
+
+    // Tìm tất cả ứng cử viên tọa độ (DMS hoặc Decimal cao độ)
+    RegExp dmsCandidate = RegExp(r"(\d+)\s*[°\-\s\.]\s*(\d+)?\s*['\.\s\-]?\s*(\d+\.?\d*)?\s*[" + '"' + r"\s\-]?\s*([NSEW])?");
+    RegExp decimalCandidate = RegExp(r"(\d{1,2}\.\d{4,})|(\d{3}\.\d{4,})");
+    
+    List<double> latitudes = [];
+    List<double> longitudes = [];
+    
+    // Ưu tiên DMS trước
+    for (Match m in dmsCandidate.allMatches(text)) {
+      String fullMatch = m.group(0) ?? '';
+      if (fullMatch.length < 5) continue;
+      
+      double? val = _parseDMS(fullMatch);
+      if (val != null) {
+        String dir = m.group(4) ?? '';
+        if (dir == 'N' || dir == 'S' || (val > 0 && val < 50)) {
+          latitudes.add(val);
+        } else if (dir == 'E' || dir == 'W' || val >= 80) {
+          longitudes.add(val);
+        }
+      }
+    }
+    
+    // Nếu chưa đủ, tìm thêm Decimal
+    if (latitudes.length < 2 || longitudes.length < 2) {
+      for (Match m in decimalCandidate.allMatches(text)) {
+        double? val = double.tryParse(m.group(0) ?? '');
+        if (val != null) {
+          if (val > 0 && val < 50 && !latitudes.contains(val)) {
+            latitudes.add(val);
+          } else if (val >= 80 && val < 180 && !longitudes.contains(val)) {
+            longitudes.add(val);
+          }
+        }
+      }
+    }
+    
+    if (latitudes.length >= 2 && longitudes.length >= 2) {
+      latitudes.sort();
+      longitudes.sort();
+      south = latitudes.first;
+      north = latitudes.last;
+      west = longitudes.first;
+      east = longitudes.last;
+      
+      // Tạo bounds và vẽ khung NGAY LẬP TỨC
+      LatLngBounds bounds = LatLngBounds(LatLng(south, west), LatLng(north, east));
+      
+      List<Polyline> lines = [
+        Polyline(
+          points: [
+            LatLng(south, west),
+            LatLng(south, east),
+            LatLng(north, east),
+            LatLng(north, west),
+            LatLng(south, west),
+          ],
+          color: Colors.red,  // Đỏ nổi bật
+          strokeWidth: 3,
+          isDotted: true,
+        ),
+      ];
+
+      widget.onBoundsCreated(bounds, lines);
+      Navigator.of(context).pop();
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('✓ Đã vẽ khung từ ảnh OCR!')),
+      );
+    } else {
+      // Không đủ tọa độ -> Chuyển sang tab Tọa độ để sửa thủ công
+      _pasteTextCtrl.text = _ocrResultText!;
+      setState(() {
+        _errorMessage = 'Không tìm đủ 4 tọa độ. Đã copy text sang tab Dán để sửa thủ công.';
+      });
+      _tabController.animateTo(2); // Tab Dán
+    }
+  }
+
   Future<void> _exportToKmz() async {
     if (widget.currentBounds == null) {
       setState(() => _errorMessage = 'Chưa có khung tọa độ để xuất');
@@ -765,12 +856,9 @@ class _ImportDataDialogState extends State<ImportDataDialog>
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: () {
-                  _pasteTextCtrl.text = _ocrResultText!;
-                  _parseTextForCoordinates();
-                },
-                icon: const Icon(Icons.auto_fix_high),
-                label: const Text('Phân tích tọa độ'),
+                onPressed: _analyzeAndDrawFrameDirectly,  // [v1.1.6] Vẽ khung trực tiếp
+                icon: const Icon(Icons.grid_on),
+                label: const Text('VẼ KHUNG NGAY'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
                   foregroundColor: Colors.white,
