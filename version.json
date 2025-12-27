@@ -4,14 +4,16 @@
     "releaseDate": "2025-12-27",
     "releaseNotes": "v1.1.6: Cải thiện UX BLE, rút gọn quy trình OCR vẽ khung, ưu tiên bản đồ VietMap và giữ khung viền khi tắt lưới.",
     "downloadUrl": {
-        "android-arm64": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.6/app-arm64-v8a-release.apk",
-        "android-arm": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.6/app-armeabi-v7a-release.apk",
-        "android-x64": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.6/app-x86_64-release.apk"
+        "android": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.6/app-arm64-v8a-release.apk",
+        "android_arm64": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.6/app-arm64-v8a-release.apk",
+        "android_armv7": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.6/app-armeabi-v7a-release.apk",
+        "android_x64": "https://github.com/ANHDOO/idmav_app/releases/download/v1.1.6/app-x86_64-release.apk"
     },
     "hashes": {
-        "android-arm64": "311954CCDDC265CFCEE2CB32676B18499B3DA1B21F5D0DC296AEC1CAE0D36F38",
-        "android-arm": "E0E73E86D344BBF5D71F0F41F6E87810A7C648383480AB2391234E7031EC812B",
-        "android-x64": "326A6742651650A2E5460F44425107961456A9F887E27BCC759A1A9C44524300"
+        "android": "311954CCDDC265CFCEE2CB32676B18499B3DA1B21F5D0DC296AEC1CAE0D36F38",
+        "android_arm64": "311954CCDDC265CFCEE2CB32676B18499B3DA1B21F5D0DC296AEC1CAE0D36F38",
+        "android_armv7": "E0E73E86D344BBF5D71F0F41F6E87810A7C648383480AB2391234E7031EC812B",
+        "android_x64": "326A6742651650A2E5460F44425107961456A9F887E27BCC759A1A9C44524300"
     },
     "required": false,
     "minVersion": "1.1.0"
