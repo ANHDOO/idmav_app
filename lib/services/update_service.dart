@@ -258,7 +258,7 @@ class UpdateService {
           debugPrint('🛡️ Đang kiểm tra tính toàn vẹn (SHA-256)...');
           final expectedHash = versionInfo.hashes[platformKey];
           final actualHash = await _calculateFileHash(filePath);
-          if (actualHash != expectedHash) {
+          if (actualHash?.toLowerCase() != expectedHash?.toLowerCase()) {
             debugPrint('❌ Lỗi toàn vẹn: Hash không khớp!');
             debugPrint('   Mong đợi: $expectedHash');
             debugPrint('   Thực tế:  $actualHash');
